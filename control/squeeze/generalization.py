@@ -253,3 +253,13 @@ def apply_box_domain_randomization(
         site_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SITE, name)
         if site_id >= 0:
             model.site_pos[site_id, 1] = sign * hy
+
+    # mj_setConst recomputes mass/inertia-dependent constant fields (e.g.
+    # body_invweight0, dof_M0) from the body_mass/body_inertia just written.
+    # Without it those fields stay at their compile-time values for the
+    # nominal 0.50 kg box, and free-fall acceleration comes out scaled by
+    # (randomized_mass / 0.50) instead of matching configured gravity --
+    # heavier boxes fall much faster than predicted, lighter ones much
+    # slower, silently breaking every ballistic prediction and interception
+    # plan for any non-nominal mass.
+    mujoco.mj_setConst(model, mujoco.MjData(model))
