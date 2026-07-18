@@ -1,0 +1,186 @@
+{
+  "seeds": [
+    7,
+    17,
+    42,
+    101,
+    256,
+    777,
+    2024,
+    31415
+  ],
+  "episodes": 8,
+  "successes": 7,
+  "success_rate": 0.875,
+  "grasp_time_s_mean": 3.508571428571264,
+  "grasp_time_s_std": 0.025872528966104057,
+  "grasp_reached_count": 7,
+  "aggregate": {
+    "left_contact_force_n": {
+      "mean": 2.5055586158776597,
+      "std": 0.9476848638465984
+    },
+    "right_contact_force_n": {
+      "mean": 2.5005623118369753,
+      "std": 0.9457383823897124
+    },
+    "final_endpoint_error_m": {
+      "mean": 0.05420688212466417,
+      "std": 0.008109330019254018
+    },
+    "online_updates": {
+      "mean": 10.0,
+      "std": 0.0
+    },
+    "total_transitions": {
+      "mean": 300.0,
+      "std": 0.0
+    },
+    "actor_weight_change_l2": {
+      "mean": 0.09416501224040985,
+      "std": 0.0221237472242615
+    },
+    "object_displacement_m": {
+      "mean": 0.06868473515460727,
+      "std": 0.008810085548949666
+    }
+  },
+  "per_seed": [
+    {
+      "seed": 7,
+      "success": true,
+      "final_phase": "manipulation",
+      "simulated_time_s": 5.999999999999561,
+      "grasp_time_s": 3.4799999999998383,
+      "manipulation_time_s": 3.899999999999792,
+      "left_contact_force_n": 2.831838968142698,
+      "right_contact_force_n": 2.8319640261827574,
+      "final_endpoint_error_m": 0.057296166336710794,
+      "final_object_goal_error_m": 0.07677475360573123,
+      "online_updates": 10,
+      "total_transitions": 300,
+      "actor_weight_change_l2": 0.097725510597229,
+      "device": "cpu",
+      "object_displacement_m": 0.07302321211203038
+    },
+    {
+      "seed": 17,
+      "success": true,
+      "final_phase": "manipulation",
+      "simulated_time_s": 5.999999999999561,
+      "grasp_time_s": 3.499999999999836,
+      "manipulation_time_s": 3.91999999999979,
+      "left_contact_force_n": 2.8527758575480884,
+      "right_contact_force_n": 2.8537344590053433,
+      "final_endpoint_error_m": 0.0572779585248584,
+      "final_object_goal_error_m": 0.0768712252435426,
+      "online_updates": 10,
+      "total_transitions": 300,
+      "actor_weight_change_l2": 0.11457622051239014,
+      "device": "cpu",
+      "object_displacement_m": 0.07232218322215553
+    },
+    {
+      "seed": 42,
+      "success": false,
+      "final_phase": "pre_contact",
+      "simulated_time_s": 5.999999999999561,
+      "grasp_time_s": null,
+      "manipulation_time_s": null,
+      "left_contact_force_n": 0.0,
+      "right_contact_force_n": 0.0,
+      "final_endpoint_error_m": 0.03275179714470337,
+      "final_object_goal_error_m": null,
+      "online_updates": 10,
+      "total_transitions": 300,
+      "actor_weight_change_l2": 0.06365635991096497,
+      "device": "cpu",
+      "object_displacement_m": 0.0454332334060977
+    },
+    {
+      "seed": 101,
+      "success": true,
+      "final_phase": "manipulation",
+      "simulated_time_s": 5.999999999999561,
+      "grasp_time_s": 3.519999999999834,
+      "manipulation_time_s": 3.9399999999997877,
+      "left_contact_force_n": 2.887614666639139,
+      "right_contact_force_n": 2.882983132744635,
+      "final_endpoint_error_m": 0.0572481703174932,
+      "final_object_goal_error_m": 0.07663716636522022,
+      "online_updates": 10,
+      "total_transitions": 300,
+      "actor_weight_change_l2": 0.07605049014091492,
+      "device": "cpu",
+      "object_displacement_m": 0.0727563680548516
+    },
+    {
+      "seed": 256,
+      "success": true,
+      "final_phase": "manipulation",
+      "simulated_time_s": 5.999999999999561,
+      "grasp_time_s": 3.499999999999836,
+      "manipulation_time_s": 3.91999999999979,
+      "left_contact_force_n": 2.8553245265696066,
+      "right_contact_force_n": 2.84338249330286,
+      "final_endpoint_error_m": 0.05728254553218573,
+      "final_object_goal_error_m": 0.07674200087073263,
+      "online_updates": 10,
+      "total_transitions": 300,
+      "actor_weight_change_l2": 0.09194089472293854,
+      "device": "cpu",
+      "object_displacement_m": 0.07174742336579927
+    },
+    {
+      "seed": 777,
+      "success": true,
+      "final_phase": "manipulation",
+      "simulated_time_s": 5.999999999999561,
+      "grasp_time_s": 3.519999999999834,
+      "manipulation_time_s": 3.9399999999997877,
+      "left_contact_force_n": 2.8735837700888087,
+      "right_contact_force_n": 2.8588816548645704,
+      "final_endpoint_error_m": 0.05726290408935315,
+      "final_object_goal_error_m": 0.07701945275025636,
+      "online_updates": 10,
+      "total_transitions": 300,
+      "actor_weight_change_l2": 0.1387939453125,
+      "device": "cpu",
+      "object_displacement_m": 0.07105570503928149
+    },
+    {
+      "seed": 2024,
+      "success": true,
+      "final_phase": "manipulation",
+      "simulated_time_s": 5.999999999999561,
+      "grasp_time_s": 3.4799999999998383,
+      "manipulation_time_s": 3.899999999999792,
+      "left_contact_force_n": 2.8076498837727484,
+      "right_contact_force_n": 2.805093347578225,
+      "final_endpoint_error_m": 0.05732973426154335,
+      "final_object_goal_error_m": 0.07669618588218184,
+      "online_updates": 10,
+      "total_transitions": 300,
+      "actor_weight_change_l2": 0.07923878729343414,
+      "device": "cpu",
+      "object_displacement_m": 0.07145312124568574
+    },
+    {
+      "seed": 31415,
+      "success": true,
+      "final_phase": "manipulation",
+      "simulated_time_s": 5.999999999999561,
+      "grasp_time_s": 3.5599999999998295,
+      "manipulation_time_s": 3.9799999999997833,
+      "left_contact_force_n": 2.9356812542601873,
+      "right_contact_force_n": 2.9284593810174098,
+      "final_endpoint_error_m": 0.057205780790465406,
+      "final_object_goal_error_m": 0.07704804534691119,
+      "online_updates": 10,
+      "total_transitions": 300,
+      "actor_weight_change_l2": 0.0913378894329071,
+      "device": "cpu",
+      "object_displacement_m": 0.07168663479095641
+    }
+  ]
+}

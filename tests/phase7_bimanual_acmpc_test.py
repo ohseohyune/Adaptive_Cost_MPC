@@ -25,6 +25,7 @@ from control.mpc.online_actor_critic import (
     BimanualPhase,
     DifferentiableBimanualMPC,
     DifferentiableMPCConfig,
+    OnlineActorCriticACMPC,
     build_bimanual_observation,
     resolve_device,
 )
@@ -54,7 +55,7 @@ def sc2_differentiable_mpc() -> tuple[bool, str]:
     actor = AdaptiveCostActor(cfg.horizon, hidden_dim=32, delta_fraction=0.5)
     mpc = DifferentiableBimanualMPC(cfg)
     obs = torch.randn(1, OBS_DIM)
-    weights = actor(obs, BimanualPhase.PRE_CONTACT)
+    weights = actor(obs, torch.tensor([int(BimanualPhase.PRE_CONTACT)]))
     mean, sequence = mpc(
         ee_positions=torch.tensor([[0.28, 0.26, 0.81, 0.28, -0.26, 0.81]]),
         object_positions=torch.tensor([[0.25, 0.0, 0.74]]),
@@ -100,16 +101,97 @@ def sc4_online_physical_grasp() -> tuple[bool, str]:
         and summary.grasp_time_s is not None
         and summary.left_contact_force_n > 0.005
         and summary.right_contact_force_n > 0.005
-        and summary.online_updates >= 250
+        # PPO updates in batches (rollout_size steps per update), not every
+        # control step, so the meaningful "enough real experience" check is
+        # on total buffered transitions; online_updates just needs to be
+        # nonzero (at least one PPO update actually applied).
+        and summary.total_transitions >= 250
+        and summary.online_updates >= 1
         and summary.actor_weight_change_l2 > 1e-4
         and summary.object_displacement_m > 0.02
     )
     detail = (
         f"success={summary.success}, phase={summary.final_phase}, "
         f"grasp_t={summary.grasp_time_s}, force=({summary.left_contact_force_n:.2f},"
-        f"{summary.right_contact_force_n:.2f})N, updates={summary.online_updates}, "
+        f"{summary.right_contact_force_n:.2f})N, transitions={summary.total_transitions}, "
+        f"updates={summary.online_updates}, "
         f"actor_delta={summary.actor_weight_change_l2:.3e}, "
         f"object_motion={summary.object_displacement_m:.3f}m"
+    )
+    return ok, detail
+
+
+def sc5_ppo_update_mechanics() -> tuple[bool, str]:
+    from control.mpc.online_actor_critic import ACMPCRolloutBuffer, OnlineActorCriticConfig
+
+    mpc_cfg = DifferentiableMPCConfig(horizon=4, dt=0.02, velocity_limit=0.2)
+    learning_cfg = OnlineActorCriticConfig(
+        hidden_dim=32,
+        device="cpu",
+        seed=11,
+        minibatch_size=4,
+        minimum_online_rollout=4,
+        maximum_online_actor_delta=0.01,
+        training_epochs=3,
+    )
+    learner = OnlineActorCriticACMPC(mpc_cfg, learning_cfg)
+
+    rng = np.random.default_rng(11)
+    rollout = ACMPCRolloutBuffer()
+    phases = [
+        BimanualPhase.INTERCEPT,
+        BimanualPhase.PRE_CONTACT,
+        BimanualPhase.GRASPING,
+        BimanualPhase.GRASPED,
+    ]
+    for index in range(8):
+        phase = phases[index % len(phases)]
+        observation = rng.normal(size=OBS_DIM).astype(np.float32)
+        ee_positions = (rng.normal(size=6) * 0.1).astype(np.float32)
+        object_position = (rng.normal(size=3) * 0.1).astype(np.float32)
+        object_velocity = (rng.normal(size=3) * 0.05).astype(np.float32)
+        relative_reference = np.array([0.0, -0.5, 0.0], dtype=np.float32)
+        previous_velocity = (rng.normal(size=6) * 0.05).astype(np.float32)
+        action = learner.act(
+            observation=observation,
+            phase=phase,
+            ee_positions=ee_positions,
+            object_position=object_position,
+            object_velocity=object_velocity,
+            relative_reference=relative_reference,
+            previous_velocity=previous_velocity,
+            training=True,
+        )
+        rollout.add(
+            observation=observation,
+            phase=phase,
+            ee_positions=ee_positions,
+            object_position=object_position,
+            object_velocity=object_velocity,
+            relative_reference=relative_reference,
+            previous_velocity=previous_velocity,
+            action=action,
+            reward=float(rng.normal()),
+            done=(index == 7),
+        )
+
+    online_summary = learner.update(rollout, online=True, next_value=0.0)
+    online_ok = (
+        online_summary.applied
+        and online_summary.transitions == 8
+        and online_summary.actor_parameter_delta <= learning_cfg.maximum_online_actor_delta + 1e-6
+        and np.isfinite(online_summary.approximate_kl)
+    )
+
+    offline_summary = learner.update(rollout, online=False, next_value=0.0)
+    offline_ok = offline_summary.applied and offline_summary.epochs == learning_cfg.training_epochs
+
+    ok = online_ok and offline_ok
+    detail = (
+        f"online: applied={online_summary.applied}, "
+        f"delta={online_summary.actor_parameter_delta:.4f}, "
+        f"kl={online_summary.approximate_kl:.4f} | "
+        f"offline: applied={offline_summary.applied}, epochs={offline_summary.epochs}"
     )
     return ok, detail
 
@@ -120,6 +202,7 @@ def main() -> None:
         ("SC2 differentiable MPC", sc2_differentiable_mpc),
         ("SC3 CPU/CUDA device selection", sc3_device_fallback),
         ("SC4 online physical bimanual grasp", sc4_online_physical_grasp),
+        ("SC5 PPO update mechanics", sc5_ppo_update_mechanics),
     ]
     passed = 0
     print("\n=== Phase 7: Online Bimanual AC-MPC ===\n")

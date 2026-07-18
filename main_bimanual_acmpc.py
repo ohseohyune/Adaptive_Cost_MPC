@@ -31,10 +31,12 @@ from control.clik.contact import (
 )
 from control.clik.impedance import CartesianImpedanceConfig, CartesianImpedanceController
 from control.mpc import (
+    ACMPCRolloutBuffer,
     BimanualPhase,
     DifferentiableMPCConfig,
     OnlineActorCriticACMPC,
     OnlineActorCriticConfig,
+    PPOUpdateSummary,
     build_bimanual_observation,
 )
 from robot.ffw_config import FFW_ARMS, FFW_GRIPPERS
@@ -52,6 +54,8 @@ class DemoConfig:
     device: str = "auto"
     online_learning: bool = True
     exploration_std: float = 0.015
+    rollout_size: int = 32
+    offline_training: bool = False
     seed: int = 7
     viewer: bool = False
     log_path: Optional[str] = None
@@ -78,6 +82,7 @@ class DemoSummary:
     final_endpoint_error_m: float
     final_object_goal_error_m: Optional[float]
     online_updates: int
+    total_transitions: int
     actor_weight_change_l2: float
     device: str
     object_displacement_m: float
@@ -282,7 +287,7 @@ def run_demo(config: Optional[DemoConfig] = None) -> DemoSummary:
         OnlineActorCriticConfig(
             device=config.device,
             seed=config.seed,
-            exploration_std=config.exploration_std,
+            initial_log_std=float(np.log(max(config.exploration_std, 1e-6))),
         ),
     )
     if config.checkpoint_path and Path(config.checkpoint_path).exists():
@@ -312,9 +317,19 @@ def run_demo(config: Optional[DemoConfig] = None) -> DemoSummary:
     desired_transforms = {
         name: runtime["initial_transforms"][name].copy() for name in ("left", "right")
     }
+    rollout = ACMPCRolloutBuffer()
+    updates: list[PPOUpdateSummary] = []
+    total_transitions = 0
+    latest_update: Optional[PPOUpdateSummary] = None
     last_observation: Optional[np.ndarray] = None
+    last_phase: Optional[BimanualPhase] = None
+    last_ee_positions: Optional[np.ndarray] = None
+    last_object_position: Optional[np.ndarray] = None
+    last_object_velocity: Optional[np.ndarray] = None
+    last_relative_reference: Optional[np.ndarray] = None
+    last_previous_velocity: Optional[np.ndarray] = None
+    last_action = None
     last_reward = 0.0
-    last_update = None
     latest_weights = None
     rows: list[dict[str, float | int | str]] = []
 
@@ -391,11 +406,28 @@ def run_demo(config: Optional[DemoConfig] = None) -> DemoSummary:
                         command_velocity,
                         manipulation_goal,
                     )
-                    last_update = learner.observe(
+                    rollout.add(
+                        observation=last_observation,
+                        phase=last_phase,
+                        ee_positions=last_ee_positions,
+                        object_position=last_object_position,
+                        object_velocity=last_object_velocity,
+                        relative_reference=last_relative_reference,
+                        previous_velocity=last_previous_velocity,
+                        action=last_action,
                         reward=last_reward,
-                        next_observation=observation,
                         done=False,
                     )
+                    total_transitions += 1
+                    if len(rollout) >= config.rollout_size:
+                        bootstrap_value = learner.predict_value(observation)
+                        latest_update = learner.update(
+                            rollout,
+                            online=not config.offline_training,
+                            next_value=bootstrap_value,
+                        )
+                        updates.append(latest_update)
+                        rollout.clear()
 
                 if phase is BimanualPhase.MANIPULATION and manipulation_goal is not None:
                     reference_center = manipulation_goal
@@ -421,6 +453,13 @@ def run_demo(config: Optional[DemoConfig] = None) -> DemoSummary:
                     previous_velocity=previous_velocity,
                     training=config.online_learning,
                 )
+                last_phase = phase
+                last_ee_positions = ee_positions
+                last_object_position = reference_center
+                last_object_velocity = reference_velocity
+                last_relative_reference = relative_reference
+                last_previous_velocity = previous_velocity
+                last_action = action
                 command_velocity = action.velocity
                 previous_velocity = action.mean_velocity
                 latest_weights = action.weights
@@ -447,9 +486,9 @@ def run_demo(config: Optional[DemoConfig] = None) -> DemoSummary:
                         "object_y": current.object_position[1],
                         "object_z": current.object_position[2],
                         "reward": last_reward,
-                        "td_error": 0.0 if last_update is None else last_update.td_error,
-                        "actor_loss": 0.0 if last_update is None else last_update.actor_loss,
-                        "critic_loss": 0.0 if last_update is None else last_update.critic_loss,
+                        "approximate_kl": 0.0 if latest_update is None else latest_update.approximate_kl,
+                        "actor_loss": 0.0 if latest_update is None else latest_update.actor_loss,
+                        "critic_loss": 0.0 if latest_update is None else latest_update.critic_loss,
                         **{
                             f"weight_{name}": float(np.mean(values))
                             for name, values in action.weights.items()
@@ -486,19 +525,23 @@ def run_demo(config: Optional[DemoConfig] = None) -> DemoSummary:
 
     final = _snapshot(runtime)
     if last_observation is not None and config.online_learning:
-        final_observation = _observation(
-            final,
-            left_velocity=np.zeros(3),
-            right_velocity=np.zeros(3),
-            time_to_contact=0.0,
-            confidence=1.0,
-            phase=phase,
-        )
-        learner.observe(
+        rollout.add(
+            observation=last_observation,
+            phase=last_phase,
+            ee_positions=last_ee_positions,
+            object_position=last_object_position,
+            object_velocity=last_object_velocity,
+            relative_reference=last_relative_reference,
+            previous_velocity=last_previous_velocity,
+            action=last_action,
             reward=_reward(previous_snapshot, final, phase, command_velocity, manipulation_goal),
-            next_observation=final_observation,
             done=True,
         )
+        total_transitions += 1
+    if len(rollout) and config.online_learning:
+        latest_update = learner.update(rollout, online=not config.offline_training, next_value=0.0)
+        updates.append(latest_update)
+        rollout.clear()
     if config.checkpoint_path:
         learner.save(config.checkpoint_path)
     if config.log_path and rows:
@@ -530,6 +573,7 @@ def run_demo(config: Optional[DemoConfig] = None) -> DemoSummary:
         final_endpoint_error_m=final.endpoint_error,
         final_object_goal_error_m=goal_error,
         online_updates=learner.update_count,
+        total_transitions=total_transitions,
         actor_weight_change_l2=float(np.linalg.norm(final_actor - initial_actor)),
         device=str(learner.device),
         object_displacement_m=float(np.linalg.norm(final.object_position - initial_object_position)),
@@ -543,6 +587,12 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--viewer", action="store_true")
     parser.add_argument("--no-online-learning", action="store_true")
     parser.add_argument("--exploration-std", type=float, default=0.015)
+    parser.add_argument("--rollout-size", type=int, default=32)
+    parser.add_argument(
+        "--offline-training",
+        action="store_true",
+        help="use multi-epoch PPO updates instead of deployment-safe online updates",
+    )
     parser.add_argument("--seed", type=int, default=7)
     parser.add_argument("--log", default=str(ROOT / "sweep_results" / "bimanual_acmpc_online.csv"))
     parser.add_argument("--checkpoint", default=None)
@@ -557,6 +607,8 @@ def main() -> None:
             device=args.device,
             online_learning=not args.no_online_learning,
             exploration_std=args.exploration_std,
+            rollout_size=args.rollout_size,
+            offline_training=args.offline_training,
             seed=args.seed,
             viewer=args.viewer,
             log_path=args.log,

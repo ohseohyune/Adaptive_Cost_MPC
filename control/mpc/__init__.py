@@ -2,12 +2,12 @@
 
 from control.mpc.online_actor_critic import (
     ACMPCAction,
+    ACMPCRolloutBuffer,
     BimanualPhase,
     DifferentiableBimanualMPC,
     DifferentiableMPCConfig,
     OnlineActorCriticACMPC,
     OnlineActorCriticConfig,
-    OnlineUpdate,
     build_bimanual_observation,
     resolve_device,
 )
@@ -26,6 +26,7 @@ from control.mpc.ppo_cost_adapter import (
 
 __all__ = [
     "ACMPCAction",
+    "ACMPCRolloutBuffer",
     "BimanualPhase",
     "COST_PARAMETER_NAMES",
     "CostAdaptationAction",
@@ -33,7 +34,6 @@ __all__ = [
     "DifferentiableMPCConfig",
     "OnlineActorCriticACMPC",
     "OnlineActorCriticConfig",
-    "OnlineUpdate",
     "GENERALIZATION_OBS_DIM",
     "PPOCostAdapter",
     "PPOCostConfig",
