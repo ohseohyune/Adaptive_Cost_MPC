@@ -1,26 +1,39 @@
 """Phase 12: bringing the ballistic box-catch scenario into the AC-MPC pipeline.
 
+required_hold_s is 5.00 (matches the box-squeeze track's
+required_dynamic_hold_s), not a quick 0.30 s touch-and-go.
+
 With engineered phase priors only (online_learning=False), the pipeline
-reliably catches and holds the fixed nominal box (12/12 seeds tested
-manually) -- SC3 asserts this. online_learning=True was also unstable within
-a single cold-start episode at first (a 30-seed sweep at the handle-grasp
-demo's default exploration_std=0.08 only succeeded 7/10), but the actual
-cause was not actor weight drift -- a control sweep with rollout_size set
-larger than any possible episode length (so *zero* mid-episode weight
-updates ever fire) still failed 4/10, isolating the real culprit to
-per-step Cartesian velocity exploration noise (std ~0.14 m/s at 0.08)
-disturbing the delicate compliant-contact hold on its own. Lowering
-exploration_std to 0.03 (AcmpcBoxCatchConfig's new default) fixed this:
-30/30 seeds succeed with online_learning=True while online_updates/
-actor_weight_change_l2 stay nonzero (genuine learning still happens). SC4
-asserts this.
+reliably catches and holds the fixed nominal box for the full 5 s (20/20
+seeds tested manually, final box speed <0.01 m/s) -- SC3 asserts this.
+online_learning=True needed two separate fixes to reach the same bar:
+
+1. A 0.3 s-hold-era fix: per-step Cartesian velocity exploration noise
+   (std ~0.14 m/s at the handle-grasp demo's inherited exploration_std=0.08)
+   was disturbing the delicate compliant-contact hold on its own (a control
+   sweep with rollout_size larger than any possible episode -- so ~zero
+   mid-episode weight updates fire -- still failed, isolating the cause to
+   noise, not actor drift). Lowering exploration_std to 0.03 fixed a 0.3 s
+   hold: 30/30.
+2. Extending the hold to 5 s reintroduced failures even at 0.03 (0/10), and
+   even at exploration_std as low as 0.002 only recovered to ~5/10 --
+   diminishing returns, since _LOG_STD_MIN in online_actor_critic.py floors
+   the actor's std at ~0.0067 regardless of how low exploration_std is set.
+   The real fix: once GRASPED, the ideal action is "hold still" -- there is
+   nothing left to explore that outweighs the risk of a bad noise sample
+   destabilizing an already-successful hold over ~500 steps, so
+   exploration is now switched off (deterministic mean action) from
+   GRASPED onward, while still exploring (and learning) through
+   INTERCEPT/PRE_CONTACT/GRASPING. 20/20 with the full 5 s hold. SC4
+   asserts this.
 
 Domain randomization (BoxDomainParameters/apply_box_domain_randomization,
 the same mass/friction/size/launch curriculum main_dynamic_box_squeeze.py
-uses) is wired in via AcmpcBoxCatchConfig.domain_parameters. Manually swept:
-warmup stage 30/30, intermediate 18/20, full 15/20 (across 20-30 seeds each,
-online_learning=True). SC5 checks one fixed-seed warmup-stage sample as a
-regression gate.
+uses) is wired in via AcmpcBoxCatchConfig.domain_parameters. Manually swept
+at the 5 s hold bar: warmup stage 20/20. (The earlier intermediate/full-stage
+percentages recorded against the old 0.3 s bar are stale and have not yet
+been re-measured against 5 s.) SC5 checks one fixed-seed warmup-stage sample
+as a regression gate.
 """
 
 from __future__ import annotations
@@ -85,7 +98,7 @@ def sc3_box_catch_succeeds_with_engineered_priors() -> tuple[bool, str]:
     summary = run_box_catch(AcmpcBoxCatchConfig(seed=7, device="cpu", online_learning=False))
     ok = (
         summary.success
-        and summary.hold_time_s >= 0.30
+        and summary.hold_time_s >= 5.00
         and summary.final_box_speed_mps < 0.5
     )
     detail = (
@@ -100,7 +113,7 @@ def sc4_online_learning_succeeds_and_still_learns() -> tuple[bool, str]:
     summary = run_box_catch(AcmpcBoxCatchConfig(seed=7, device="cpu", online_learning=True))
     ok = (
         summary.success
-        and summary.hold_time_s >= 0.30
+        and summary.hold_time_s >= 5.00
         and summary.total_transitions > 0
         and summary.online_updates >= 1
         and summary.actor_weight_change_l2 > 0.0
@@ -126,7 +139,7 @@ def sc5_domain_randomization_warmup_stage_succeeds() -> tuple[bool, str]:
     summary = run_box_catch(
         AcmpcBoxCatchConfig(seed=seed, device="cpu", squeeze=squeeze, domain_parameters=domain)
     )
-    ok = summary.success and summary.hold_time_s >= 0.30
+    ok = summary.success and summary.hold_time_s >= 5.00
     detail = (
         f"mass={domain.mass:.3f} friction={domain.friction:.3f} "
         f"half_size={tuple(round(v, 4) for v in domain.half_size)}, "

@@ -160,8 +160,11 @@ class AcmpcBoxCatchConfig:
     contact_force: float = 0.05
     stable_grasp_force: float = 1.0
     stable_grasp_time: float = 0.05
-    required_hold_s: float = 0.30
-    timeout_s: float = 2.5
+    # Matches the box-squeeze track's required_dynamic_hold_s=5.00 (see
+    # control/squeeze/config.py). timeout_s must cover the ~0.45 s approach
+    # + this hold, plus margin.
+    required_hold_s: float = 5.00
+    timeout_s: float = 7.0
     viewer: bool = False
     log_path: Optional[str] = None
     checkpoint_path: Optional[str] = None
@@ -793,6 +796,27 @@ def run_box_catch(config: Optional[AcmpcBoxCatchConfig] = None) -> BoxCatchSumma
                         tracking_time_constant, control_dt
                     )
                     object_velocity_feedforward = velocity_feedforward_base + position_correction
+                # Per-step Cartesian velocity exploration noise (~std, see
+                # exploration_std's docstring above) has a small risk of
+                # destabilizing the delicate compliant hold on any given
+                # step -- negligible over the ~80-step 0.3 s window this was
+                # tuned against (30/30), but that risk compounds over a much
+                # longer hold (a 5 s hold is ~500 steps) and drove success
+                # down to ~50% even at the actor's minimum std floor
+                # (_LOG_STD_MIN in online_actor_critic.py). A control
+                # experiment (rollout_size larger than the episode, so
+                # ~zero weight updates fire) still failed 0/10 at the same
+                # exploration_std, isolating the cause to the noise itself,
+                # not actor drift. Once GRASPED, the ideal action is "hold
+                # still" -- there is nothing left to explore that outweighs
+                # the risk of injecting noise into an already-successful
+                # hold, so stop sampling stochastic actions from that phase
+                # onward (still using training=True, hence still collecting
+                # rollout/learning signal, up through GRASPING).
+                exploring = config.online_learning and phase not in {
+                    CatchPhase.GRASPED,
+                    CatchPhase.SUCCESS,
+                }
                 action = learner.act(
                     observation=observation,
                     phase=bimanual_phase,
@@ -801,7 +825,7 @@ def run_box_catch(config: Optional[AcmpcBoxCatchConfig] = None) -> BoxCatchSumma
                     object_velocity=object_velocity_feedforward,
                     relative_reference=relative_reference,
                     previous_velocity=previous_velocity,
-                    training=config.online_learning,
+                    training=exploring,
                 )
                 last_phase = bimanual_phase
                 last_ee_positions = ee_positions
