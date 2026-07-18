@@ -131,6 +131,11 @@ class OnlineActorCriticConfig:
     minimum_online_rollout: int = 8
     maximum_online_actor_delta: float = 0.02
     initial_log_std: float = -3.2
+    # Overrides AdaptiveCostActor._PHASE_PRIORS when set. Leave None for the
+    # default handle-grasp priors; scenarios with different geometry/timing
+    # (e.g. a fast ballistic catch needing much stronger grasp-separation
+    # tracking) can supply their own without touching the shared default.
+    phase_priors: Optional[tuple[tuple[float, ...], ...]] = None
     device: str = "auto"
     seed: int = 7
 
@@ -165,6 +170,7 @@ class AdaptiveCostActor(nn.Module):
         hidden_dim: int,
         delta_fraction: float,
         initial_log_std: float = -3.2,
+        phase_priors: Optional[tuple[tuple[float, ...], ...]] = None,
     ) -> None:
         super().__init__()
         self.horizon = int(horizon)
@@ -182,7 +188,8 @@ class AdaptiveCostActor(nn.Module):
         nn.init.zeros_(self.net[-1].weight)
         nn.init.zeros_(self.net[-1].bias)
         self.register_buffer(
-            "phase_priors", torch.tensor(self._PHASE_PRIORS, dtype=torch.float32)
+            "phase_priors",
+            torch.tensor(phase_priors or self._PHASE_PRIORS, dtype=torch.float32),
         )
         # Learnable exploration noise on the resulting Cartesian velocity
         # action, in the same spirit as ppo_cost_adapter's _CostActor.log_std:
@@ -203,7 +210,11 @@ class AdaptiveCostActor(nn.Module):
             phase_index
         ]
         weights = base.unsqueeze(1) * (1.0 + self.delta_fraction * residual)
-        return torch.clamp(weights, min=1e-3, max=50.0)
+        # 500 (not the previous 50) so a scenario needing a much stiffer
+        # relative/grasp-tracking prior -- e.g. closing a large initial
+        # hand-separation gap within a fast ballistic catch's short window --
+        # is not silently capped below what its prior actually requests.
+        return torch.clamp(weights, min=1e-3, max=500.0)
 
 
 class ValueCritic(nn.Module):
@@ -444,6 +455,7 @@ class OnlineActorCriticACMPC:
             self.config.hidden_dim,
             self.config.weight_delta_fraction,
             self.config.initial_log_std,
+            self.config.phase_priors,
         ).to(self.device)
         self.critic = ValueCritic(self.config.hidden_dim).to(self.device)
         self.mpc = DifferentiableBimanualMPC(self.mpc_config).to(self.device)

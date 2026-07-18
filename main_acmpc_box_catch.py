@@ -85,6 +85,22 @@ _PHASE_TO_BIMANUAL = {
     CatchPhase.FAILED: BimanualPhase.GRASPED,
 }
 
+# The handle-grasp demo's grasp weight (10) gives a hand-separation gain that
+# is far too weak to close a large initial separation error within a ~0.5 s
+# ballistic flight (measured: ~0.03 m/s of closing velocity per 0.1 m of
+# error at weight 10, vs ~0.5 m/s at weight 250) -- the home pose's natural
+# hand separation does not match the box's target pad separation, and this
+# scenario has no prepare/ready-pose phase to close that gap in advance the
+# way the box-squeeze track's does. Object/velocity/force/smoothness priors
+# are left close to the original INTERCEPT/PRE_CONTACT values.
+_BOX_CATCH_PHASE_PRIORS = (
+    (30.0, 250.0, 0.05, 4.0, 0.4),
+    (30.0, 250.0, 1.5, 3.0, 0.5),
+    (16.0, 60.0, 12.0, 1.5, 1.0),
+    (18.0, 40.0, 9.0, 2.0, 1.5),
+    (32.0, 18.0, 7.0, 3.0, 1.5),
+)
+
 
 @dataclass
 class AcmpcBoxCatchConfig:
@@ -123,6 +139,7 @@ class BoxCatchSummary:
     first_contact_peak_force_n: float
     bilateral_contact_time_s: Optional[float]
     hold_time_s: float
+    minimum_endpoint_error_m: float
     final_box_speed_mps: float
     online_updates: int
     total_transitions: int
@@ -266,6 +283,7 @@ def run_box_catch(config: Optional[AcmpcBoxCatchConfig] = None) -> BoxCatchSumma
             device=config.device,
             seed=config.seed,
             initial_log_std=float(np.log(max(config.exploration_std, 1e-6))),
+            phase_priors=_BOX_CATCH_PHASE_PRIORS,
         ),
     )
     if config.checkpoint_path and Path(config.checkpoint_path).exists():
@@ -295,6 +313,7 @@ def run_box_catch(config: Optional[AcmpcBoxCatchConfig] = None) -> BoxCatchSumma
     previous_velocity = np.zeros(6)
     command_velocity = np.zeros(6)
     previous_endpoint_error = 0.0
+    minimum_endpoint_error = float("inf")
 
     rollout = ACMPCRolloutBuffer()
     updates: list[PPOUpdateSummary] = []
@@ -343,10 +362,15 @@ def run_box_catch(config: Optional[AcmpcBoxCatchConfig] = None) -> BoxCatchSumma
                 # (zero object_velocity) that it tracks and settles onto
                 # over the whole remaining flight, re-solved fresh each step
                 # as the TTC estimate refines.
+                # (catch_plane_x - position_x) and velocity_x are both
+                # negative while approaching, so their ratio is the correct
+                # positive time-to-plane -- do not negate velocity_x here
+                # (that flips the sign and was clamping every estimate to
+                # the minimum_intercept_ttc floor).
                 remaining_ttc = float(
                     np.clip(
                         (cfg.catch_plane_x - prediction.position[0])
-                        / max(-prediction.velocity[0], 1e-3),
+                        / min(prediction.velocity[0], -1e-3),
                         cfg.minimum_intercept_ttc,
                         cfg.maximum_intercept_ttc,
                     )
@@ -373,6 +397,7 @@ def run_box_catch(config: Optional[AcmpcBoxCatchConfig] = None) -> BoxCatchSumma
                     float(np.linalg.norm(left_ee - left_target))
                     + float(np.linalg.norm(right_ee - right_target))
                 )
+                minimum_endpoint_error = min(minimum_endpoint_error, endpoint_error)
                 relative_normal_speed = max(
                     abs(float(np.dot(box_velocity, y_axis))), 1e-6
                 )
@@ -623,6 +648,7 @@ def run_box_catch(config: Optional[AcmpcBoxCatchConfig] = None) -> BoxCatchSumma
         first_contact_peak_force_n=float(limiter.peak_first_contact_force),
         bilateral_contact_time_s=bilateral_contact_time,
         hold_time_s=float(hold_timer),
+        minimum_endpoint_error_m=float(minimum_endpoint_error),
         final_box_speed_mps=final_box_speed,
         online_updates=learner.update_count,
         total_transitions=total_transitions,
