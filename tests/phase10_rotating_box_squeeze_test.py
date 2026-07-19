@@ -22,7 +22,7 @@ from control.squeeze import (
     rotation_to_quaternion,
 )
 from control.squeeze.ballistic import BallisticPrediction
-from main_dynamic_box_squeeze import DynamicRunConfig, run_dynamic_side_squeeze
+from box_squeeze.main_dynamic_box_squeeze import DynamicRunConfig, run_dynamic_side_squeeze
 
 
 def test_quaternion_angular_velocity_prediction() -> None:

@@ -20,11 +20,16 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Optional
 
 import numpy as np
+
+ROOT = Path(__file__).resolve().parent.parent
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 from control.squeeze import (
     CurriculumScheduler,
@@ -32,10 +37,7 @@ from control.squeeze import (
     resolve_ballistic_launch_position,
     resolve_ballistic_launch_velocity,
 )
-from main_acmpc_box_catch import AcmpcBoxCatchConfig, BoxCatchSummary, run_box_catch
-
-
-ROOT = Path(__file__).resolve().parent
+from acmpc.main_acmpc_box_catch import AcmpcBoxCatchConfig, BoxCatchSummary, run_box_catch
 
 
 @dataclass

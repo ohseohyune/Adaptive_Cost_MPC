@@ -6,8 +6,8 @@ fixed) and reports aggregate success rate and mean +/- std for the
 continuous metrics in ``DemoSummary``. Intended for reporting a reproducible
 results table rather than eyeballing a single run.
 
-    python evaluate_bimanual_acmpc.py --seeds 5
-    python evaluate_bimanual_acmpc.py --seed-list 7,11,23,42,101 --duration 6
+    python acmpc/evaluate_bimanual_acmpc.py --seeds 5
+    python acmpc/evaluate_bimanual_acmpc.py --seed-list 7,11,23,42,101 --duration 6
 """
 
 from __future__ import annotations
@@ -15,14 +15,16 @@ from __future__ import annotations
 import argparse
 import json
 import statistics
+import sys
 from dataclasses import asdict
 from pathlib import Path
 from typing import Optional
 
-from main_bimanual_acmpc import DemoConfig, DemoSummary, run_demo
+ROOT = Path(__file__).resolve().parent.parent
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
-
-ROOT = Path(__file__).resolve().parent
+from acmpc.main_bimanual_acmpc import DemoConfig, DemoSummary, run_demo
 
 # Fields from DemoSummary to aggregate as mean +/- std. Boolean/optional
 # fields (success, phase, timings) are summarized separately.

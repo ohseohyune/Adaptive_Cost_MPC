@@ -50,7 +50,7 @@ if str(ROOT) not in sys.path:
 
 from control.mpc.online_actor_critic import DifferentiableBimanualMPC, DifferentiableMPCConfig
 from control.squeeze import DynamicSideSqueezeConfig, default_curriculum
-from main_acmpc_box_catch import AcmpcBoxCatchConfig, run_box_catch
+from acmpc.main_acmpc_box_catch import AcmpcBoxCatchConfig, run_box_catch
 
 
 def _solve(gravity: tuple[float, float, float]) -> np.ndarray:

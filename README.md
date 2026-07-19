@@ -13,12 +13,12 @@ requires frictional side contact to support the free box against gravity for
 one second.
 
 ```bash
-python main_box_squeeze.py
-python main_box_squeeze.py --viewer
+python box_squeeze/main_box_squeeze.py
+python box_squeeze/main_box_squeeze.py --viewer
 python tests/phase8_side_squeeze_test.py
 ```
 
-Its implementation is split across `control/squeeze/`, `main_box_squeeze.py`,
+Its implementation is split across `control/squeeze/`, `box_squeeze/main_box_squeeze.py`,
 and `model/robotis_ffw/scene_ffw_sg2_fixed_base_box_squeeze.xml`.
 
 ## Dynamic ballistic box side-squeeze milestone
@@ -31,8 +31,8 @@ first-contact force monitor keeps the initial pad force below the configured
 limit before the controller ramps to the normal squeeze force.
 
 ```bash
-python main_dynamic_box_squeeze.py --seed 7
-python main_dynamic_box_squeeze.py --seed 7 --viewer
+python box_squeeze/main_dynamic_box_squeeze.py --seed 7
+python box_squeeze/main_dynamic_box_squeeze.py --seed 7 --viewer
 python tests/phase9_dynamic_box_squeeze_test.py
 ```
 
@@ -74,8 +74,8 @@ pyramid and bounded soft-finger moments. Its slip and angular-velocity costs
 are logged and used by the HOLD acceptance gate.
 
 ```bash
-python main_rotating_box_squeeze.py --seed 7
-python main_rotating_box_squeeze.py --seed 7 --viewer
+python box_squeeze/main_rotating_box_squeeze.py --seed 7
+python box_squeeze/main_rotating_box_squeeze.py --seed 7 --viewer
 python tests/phase10_rotating_box_squeeze_test.py
 ```
 
@@ -104,9 +104,9 @@ PPO and GAE; the physical controller and constrained wrench QP remain in the
 loop for every rollout.
 
 ```bash
-python main_generalized_box_squeeze.py --episodes 12 --rollout-size 4 --device auto
-python main_generalized_box_squeeze.py --episodes 450 --rollout-size 12 --offline-training --curriculum-mode balanced --checkpoint checkpoints/generalized_shape_v3.pt
-python main_generalized_box_squeeze.py --episodes 300 --evaluation-suite --checkpoint checkpoints/generalized_shape_v3.pt --load-checkpoint --collision-mode full
+python box_squeeze/main_generalized_box_squeeze.py --episodes 12 --rollout-size 4 --device auto
+python box_squeeze/main_generalized_box_squeeze.py --episodes 450 --rollout-size 12 --offline-training --curriculum-mode balanced --checkpoint checkpoints/generalized_shape_v3.pt
+python box_squeeze/main_generalized_box_squeeze.py --episodes 300 --evaluation-suite --checkpoint checkpoints/generalized_shape_v3.pt --load-checkpoint --collision-mode full
 python tests/phase11_generalized_acmpc_test.py
 ```
 
@@ -145,7 +145,7 @@ evaluation, `--offline-training` for multi-epoch PPO training, and
 that policy with `--load-checkpoint` and retain the one-epoch online guard.
 
 The implementation is in `control/squeeze/generalization.py`,
-`control/mpc/ppo_cost_adapter.py`, and `main_generalized_box_squeeze.py`.
+`control/mpc/ppo_cost_adapter.py`, and `box_squeeze/main_generalized_box_squeeze.py`.
 CUDA is optional: `--device auto` uses it for the small PyTorch actor/critic
 when available, while MuJoCo and the OSQP wrench allocator work on CPU.
 
@@ -182,7 +182,7 @@ for example `checkpoints/generalized_highspeed.pt`.
 ## End-to-end AC-MPC demo
 
 ```bash
-python main_bimanual_acmpc.py --duration 6 --device auto
+python acmpc/main_bimanual_acmpc.py --duration 6 --device auto
 ```
 
 Add `--viewer` to visualize the run. `--device auto` uses CUDA when PyTorch can
@@ -190,7 +190,7 @@ access it and otherwise uses CPU. To verify the fixed safe MPC prior without
 online updates:
 
 ```bash
-python main_bimanual_acmpc.py --duration 6 --device cpu --no-online-learning
+python acmpc/main_bimanual_acmpc.py --duration 6 --device cpu --no-online-learning
 ```
 
 The runtime pipeline is:
@@ -231,7 +231,7 @@ Useful runtime options:
 
 ## Main files
 
-- `main_bimanual_acmpc.py`: finite headless/viewer execution and online update loop
+- `acmpc/main_bimanual_acmpc.py`: finite headless/viewer execution and online update loop
 - `control/mpc/online_actor_critic.py`: actor, critic and differentiable MPC
 - `model/robotis_ffw/scene_ffw_sg2_fixed_base_bimanual_dynamic.xml`: moving free object
 - `tests/phase7_bimanual_acmpc_test.py`: end-to-end acceptance test

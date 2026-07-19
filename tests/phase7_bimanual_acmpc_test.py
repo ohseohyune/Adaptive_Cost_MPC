@@ -29,7 +29,7 @@ from control.mpc.online_actor_critic import (
     build_bimanual_observation,
     resolve_device,
 )
-from main_bimanual_acmpc import DemoConfig, run_demo
+from acmpc.main_bimanual_acmpc import DemoConfig, run_demo
 
 
 def sc1_observation() -> tuple[bool, str]:

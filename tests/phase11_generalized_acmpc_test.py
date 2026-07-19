@@ -27,12 +27,12 @@ from control.squeeze import (
     default_curriculum,
 )
 from control.squeeze.generalization import NOMINAL_BOX_HALF_SIZE
-from main_generalized_box_squeeze import (
+from box_squeeze.main_generalized_box_squeeze import (
     GeneralizationRunConfig,
     _episode_config,
     run_generalized_box_squeeze,
 )
-from main_dynamic_box_squeeze import (
+from box_squeeze.main_dynamic_box_squeeze import (
     HAND_CAMERA_COLLISION_BIT,
     DynamicRunConfig,
     _disable_duplicate_end_effector_collisions,

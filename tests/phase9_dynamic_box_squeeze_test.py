@@ -20,7 +20,7 @@ from control.squeeze import (
     minimum_symmetric_squeeze_force,
     adaptive_impact_command,
 )
-from main_dynamic_box_squeeze import DynamicRunConfig, run_dynamic_side_squeeze
+from box_squeeze.main_dynamic_box_squeeze import DynamicRunConfig, run_dynamic_side_squeeze
 
 
 def test_ballistic_predictor_matches_known_gravity_trajectory() -> None:

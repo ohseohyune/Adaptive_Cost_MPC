@@ -4,11 +4,16 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from typing import Optional
 
 import numpy as np
+
+ROOT = Path(__file__).resolve().parent.parent
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 from control.mpc import (
     PPOCostAdapter,
@@ -25,14 +30,11 @@ from control.squeeze import (
     resolve_ballistic_launch_position,
     resolve_ballistic_launch_velocity,
 )
-from main_dynamic_box_squeeze import (
+from box_squeeze.main_dynamic_box_squeeze import (
     DynamicRunConfig,
     DynamicSqueezeSummary,
     run_dynamic_side_squeeze,
 )
-
-
-ROOT = Path(__file__).resolve().parent
 
 
 @dataclass

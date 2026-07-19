@@ -15,12 +15,17 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import sys
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Optional
 
 import mujoco
 import numpy as np
+
+ROOT = Path(__file__).resolve().parent.parent
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 from control.clik import MovingTargetPredictor, build_serial_arm, get_ee_transform
 from control.clik.contact import (
@@ -42,7 +47,6 @@ from control.mpc import (
 from robot.ffw_config import FFW_ARMS, FFW_GRIPPERS
 
 
-ROOT = Path(__file__).resolve().parent
 SCENE = ROOT / "model" / "robotis_ffw" / "scene_ffw_sg2_fixed_base_bimanual_dynamic.xml"
 
 

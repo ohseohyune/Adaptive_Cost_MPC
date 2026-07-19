@@ -15,7 +15,7 @@ if str(ROOT) not in sys.path:
 from control.squeeze.config import SideSqueezeConfig
 from control.squeeze.hybrid_controller import HybridSqueezeController
 from control.squeeze.pad_contact import BilateralPadContact, PadContactMeasurement
-from main_box_squeeze import RunConfig, run_side_squeeze
+from box_squeeze.main_box_squeeze import RunConfig, run_side_squeeze
 
 
 SCENE = ROOT / "model/robotis_ffw/scene_ffw_sg2_fixed_base_box_squeeze.xml"
