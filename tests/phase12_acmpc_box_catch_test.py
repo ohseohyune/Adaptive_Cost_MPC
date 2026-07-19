@@ -34,6 +34,21 @@ at the 5 s hold bar: warmup stage 20/20. (The earlier intermediate/full-stage
 percentages recorded against the old 0.3 s bar are stale and have not yet
 been re-measured against 5 s.) SC5 checks one fixed-seed warmup-stage sample
 as a regression gate.
+
+Across many episodes sharing a checkpoint (a curriculum training loop),
+maximum_online_actor_delta alone was not enough: a 100-episode online run
+on the "full" curriculum stage (paired against the same domain sequence
+with online_learning=False) went 81% -> 61% overall and specifically 84%
+(episodes 0-49) -> 38% (50-99), driven by cumulative drift away from the
+tuned phase priors (INTERCEPT's first-horizon velocity weight fell ~62%
+below its tuned value; GRASPED's force weight rose ~55% above it) even
+though each individual update stayed within its bounded per-update delta.
+maximum_cumulative_actor_delta (a cap on distance from the reference/
+cold-init actor, persisted across checkpoint save/load) fixed it: the same
+100-episode comparison went to 84% overall with the front/back halves
+essentially flat (86% vs 82%). SC6 checks the capping mechanism itself
+with fast synthetic updates (no physics), and that save/load round-trips
+the reference anchor.
 """
 
 from __future__ import annotations
@@ -48,7 +63,15 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from control.mpc.online_actor_critic import DifferentiableBimanualMPC, DifferentiableMPCConfig
+from control.mpc.online_actor_critic import (
+    ACMPCRolloutBuffer,
+    BimanualPhase,
+    DifferentiableBimanualMPC,
+    DifferentiableMPCConfig,
+    OBS_DIM,
+    OnlineActorCriticACMPC,
+    OnlineActorCriticConfig,
+)
 from control.squeeze import DynamicSideSqueezeConfig, default_curriculum
 from acmpc.main_acmpc_box_catch import AcmpcBoxCatchConfig, run_box_catch
 
@@ -148,6 +171,84 @@ def sc5_domain_randomization_warmup_stage_succeeds() -> tuple[bool, str]:
     return ok, detail
 
 
+def _synthetic_transition(rng: np.random.Generator, phase: BimanualPhase) -> dict:
+    return dict(
+        observation=rng.normal(size=OBS_DIM).astype(np.float32),
+        phase=phase,
+        ee_positions=(rng.normal(size=6) * 0.1).astype(np.float32),
+        object_position=(rng.normal(size=3) * 0.1).astype(np.float32),
+        object_velocity=(rng.normal(size=3) * 0.05).astype(np.float32),
+        relative_reference=np.array([0.0, -0.5, 0.0], dtype=np.float32),
+        previous_velocity=(rng.normal(size=6) * 0.05).astype(np.float32),
+    )
+
+
+def sc6_cumulative_actor_delta_cap_holds_and_round_trips() -> tuple[bool, str]:
+    cap = 0.05
+    mpc_cfg = DifferentiableMPCConfig(horizon=4, dt=0.02, velocity_limit=0.2)
+    learning_cfg = OnlineActorCriticConfig(
+        hidden_dim=32,
+        device="cpu",
+        seed=13,
+        minibatch_size=4,
+        minimum_online_rollout=4,
+        maximum_online_actor_delta=0.02,  # looser than the cumulative cap
+        maximum_cumulative_actor_delta=cap,
+        training_epochs=3,
+        target_kl=10.0,  # isolate the cumulative cap; don't let KL stop updates first
+    )
+    learner = OnlineActorCriticACMPC(mpc_cfg, learning_cfg)
+    rng = np.random.default_rng(13)
+    phases = [
+        BimanualPhase.INTERCEPT,
+        BimanualPhase.PRE_CONTACT,
+        BimanualPhase.GRASPING,
+        BimanualPhase.GRASPED,
+    ]
+
+    max_seen_delta = 0.0
+    for update_index in range(20):
+        rollout = ACMPCRolloutBuffer()
+        for step in range(8):
+            transition = _synthetic_transition(rng, phases[step % len(phases)])
+            action = learner.act(**transition, training=True)
+            rollout.add(
+                **transition,
+                action=action,
+                reward=float(rng.normal()),
+                done=(step == 7),
+            )
+        learner.update(rollout, online=True, next_value=0.0)
+        max_seen_delta = max(
+            max_seen_delta, learner._actor_delta(learner._reference_actor_state)
+        )
+
+    cap_held = max_seen_delta <= cap + 1e-6
+
+    # save/load must round-trip the reference anchor, not reset it -- that
+    # is the entire point (a fresh run_box_catch() call constructs a new
+    # learner and loads a shared checkpoint every episode).
+    ckpt_path = Path(__file__).resolve().parent / "_sc6_scratch_checkpoint.pt"
+    try:
+        learner.save(ckpt_path)
+        reloaded = OnlineActorCriticACMPC(mpc_cfg, learning_cfg)
+        reloaded.load(ckpt_path)
+        reference_matches = all(
+            torch.allclose(a, b)
+            for a, b in zip(learner._reference_actor_state, reloaded._reference_actor_state)
+        )
+    finally:
+        if ckpt_path.exists():
+            ckpt_path.unlink()
+
+    ok = cap_held and reference_matches
+    detail = (
+        f"cap={cap}, max cumulative actor_delta over 20 updates={max_seen_delta:.4f} "
+        f"(held={cap_held}), reference round-trips through save/load={reference_matches}"
+    )
+    return ok, detail
+
+
 def main() -> None:
     scenarios = [
         ("SC1 gravity changes the solved reference direction", sc1_gravity_changes_the_solved_reference),
@@ -155,6 +256,7 @@ def main() -> None:
         ("SC3 box-catch succeeds with engineered priors (online_learning=False)", sc3_box_catch_succeeds_with_engineered_priors),
         ("SC4 box-catch succeeds with online_learning=True and still learns", sc4_online_learning_succeeds_and_still_learns),
         ("SC5 domain randomization (warmup stage) succeeds", sc5_domain_randomization_warmup_stage_succeeds),
+        ("SC6 cumulative actor-delta cap holds and round-trips", sc6_cumulative_actor_delta_cap_holds_and_round_trips),
     ]
     passed = 0
     print("\n=== Phase 12: AC-MPC ballistic box catch (partial) ===\n")

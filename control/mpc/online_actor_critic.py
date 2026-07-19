@@ -68,10 +68,29 @@ def build_bimanual_observation(
     time_to_contact: float,
     prediction_confidence: float,
     phase: BimanualPhase,
+    object_velocity_scale: tuple[float, float, float] = (0.5, 0.5, 0.5),
 ) -> np.ndarray:
-    """Build the normalized observation consumed by the cost actor."""
+    """Build the normalized observation consumed by the cost actor.
 
-    velocity = np.clip(np.asarray(object_velocity, float).reshape(3) / 0.5, -2.0, 2.0)
+    ``object_velocity_scale`` defaults to a uniform 0.5 m/s on all three axes
+    -- correct for the near-static handle-grasp demo this was designed for
+    (object speed ~0.005 m/s) but not for a fast ballistic catch: measured
+    across box-catch rollouts, the object's x-velocity is saturated at the
+    clip bound 100% of the time during INTERCEPT/PRE_CONTACT (real speeds of
+    -1.35 to -1.47 m/s all collapse to the same clipped -2.0), and z-velocity
+    saturates 65% of the time (real fall speed reaches ~3.9 m/s by first
+    contact). The actor's cost-weight network cannot distinguish different
+    closing speeds through this channel as a result. Pass a scenario-specific
+    scale (e.g. (1.5, 0.2, 4.0), validated against measured box-catch value
+    ranges) instead of changing this default, which stays an exact no-op for
+    the existing handle-grasp demo.
+    """
+
+    velocity = np.clip(
+        np.asarray(object_velocity, float).reshape(3) / np.asarray(object_velocity_scale, float),
+        -2.0,
+        2.0,
+    )
     endpoint_errors = np.concatenate(
         [
             np.asarray(left_endpoint_error, float).reshape(3),
@@ -130,12 +149,32 @@ class OnlineActorCriticConfig:
     target_kl: float = 0.02
     minimum_online_rollout: int = 8
     maximum_online_actor_delta: float = 0.02
+    # Bounds cumulative L2 distance from the reference actor (the cold-init,
+    # zero-residual state, persisted across checkpoint save/load -- see
+    # OnlineActorCriticACMPC._reference_actor_state) across *all* updates,
+    # not just this one. None (default) preserves existing behavior (no
+    # cumulative cap) for scenarios that have not needed one. Set this when
+    # many episodes' worth of online updates are expected (a curriculum
+    # training loop), where maximum_online_actor_delta alone cannot prevent
+    # slow drift away from a validated engineered prior.
+    maximum_cumulative_actor_delta: Optional[float] = None
     initial_log_std: float = -3.2
     # Overrides AdaptiveCostActor._PHASE_PRIORS when set. Leave None for the
     # default handle-grasp priors; scenarios with different geometry/timing
     # (e.g. a fast ballistic catch needing much stronger grasp-separation
     # tracking) can supply their own without touching the shared default.
     phase_priors: Optional[tuple[tuple[float, ...], ...]] = None
+    # Ablation switch: when True, the actor is a PriorFreeCostActor (cost
+    # weights learned from scratch via softplus, no engineered phase-prior
+    # anchor) instead of AdaptiveCostActor (bounded residual around
+    # phase_priors). phase_priors/weight_delta_fraction are unused when this
+    # is set. Default False is an exact no-op for every existing caller.
+    use_prior_free_actor: bool = False
+    # Scalar broadcasts to all 5 cost dims; a 5-tuple (object, grasp, force,
+    # velocity, smoothness order -- see COST_NAMES) sets each independently,
+    # the same across every phase/horizon step. See PriorFreeCostActor's
+    # docstring for why a uniform scalar alone was not enough.
+    prior_free_initial_weights: float | tuple[float, float, float, float, float] = 5.0
     device: str = "auto"
     seed: int = 7
 
@@ -214,6 +253,88 @@ class AdaptiveCostActor(nn.Module):
         # relative/grasp-tracking prior -- e.g. closing a large initial
         # hand-separation gap within a fast ballistic catch's short window --
         # is not silently capped below what its prior actually requests.
+        return torch.clamp(weights, min=1e-3, max=500.0)
+
+
+class PriorFreeCostActor(nn.Module):
+    """Predict horizon-wise cost weights directly from PPO, no engineered prior.
+
+    Ablation counterpart to ``AdaptiveCostActor``: that class computes
+    ``weights = phase_prior * (1 + delta_fraction * tanh(net(obs)))``, i.e. a
+    *bounded residual* around a hand-designed, per-phase engineered cost
+    schedule -- the network can only ever nudge a strong human-designed
+    strategy, not author its own. This class instead outputs
+    ``softplus(net(obs))`` directly (guaranteeing positivity the way the QP
+    requires, with no multiplicative anchor to any prior at all), so the
+    entire cost-weight surface -- across cost dimension, horizon step, and
+    (implicitly, since the phase one-hot is part of the observation) phase --
+    is whatever PPO's reward signal shapes it into from scratch. This is a
+    substantially harder exploration problem (see
+    acmpc_box_catch_integration_status.md's notes on the planned 3-way
+    ablation): no engineered starting point to fall back on if a training
+    run/reward shaping choice doesn't pan out.
+
+    ``initial_weights`` sets the output layer's bias so cold-start weights
+    are ``softplus(bias) ~= initial_weights[c]`` for cost dimension ``c``,
+    the *same* across every horizon step and phase (no per-phase table --
+    that would just be AdaptiveCostActor's prior in disguise). A single
+    scalar broadcasts to all five dimensions; passing a uniform value
+    (e.g. 5.0 for all of object/grasp/force/velocity/smoothness) turns out
+    to matter: scaling every cost term by the same constant is an exact
+    no-op for the QP's solved velocity (the linear system's solution is
+    scale-invariant), but *equal* weights also means the smoothness term
+    (which resists any change from the previous velocity) competes
+    one-for-one with the object/grasp tracking terms, and empirically this
+    was never aggressive enough to close the gap to a fast-approaching box
+    in the available time even when the box was slowed and moved closer
+    (measured: endpoint error barely improved, 0.10 -> 0.083 m, over a full
+    0.15 s -> 0.56 s window sweep). A single, phase-agnostic ratio (not
+    zero, not a per-phase table) breaks that symmetry.
+    """
+
+    def __init__(
+        self,
+        horizon: int,
+        hidden_dim: int,
+        initial_log_std: float = -3.2,
+        initial_weights: float | tuple[float, float, float, float, float] = 5.0,
+    ) -> None:
+        super().__init__()
+        self.horizon = int(horizon)
+        self.net = nn.Sequential(
+            nn.Linear(OBS_DIM, hidden_dim),
+            nn.LayerNorm(hidden_dim),
+            nn.Tanh(),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.Tanh(),
+            nn.Linear(hidden_dim, self.horizon * N_COSTS),
+        )
+        nn.init.zeros_(self.net[-1].weight)
+        if isinstance(initial_weights, (int, float)):
+            per_dim = [float(initial_weights)] * N_COSTS
+        else:
+            per_dim = [float(value) for value in initial_weights]
+            if len(per_dim) != N_COSTS:
+                raise ValueError(f"initial_weights must have {N_COSTS} entries")
+        bias_per_dim = [float(np.log(np.expm1(max(value, 1e-6)))) for value in per_dim]
+        bias_init = torch.tensor(bias_per_dim * self.horizon, dtype=torch.float32)
+        with torch.no_grad():
+            self.net[-1].bias.copy_(bias_init)
+        self.log_std = nn.Parameter(torch.full((6,), float(initial_log_std)))
+
+    def forward(self, observation: torch.Tensor, phase: torch.Tensor) -> torch.Tensor:
+        """Predict horizon-wise cost weights for a batch of observations.
+
+        ``phase`` is accepted for interface parity with ``AdaptiveCostActor``
+        (both are called the same way by ``OnlineActorCriticACMPC``) but is
+        unused here -- the phase one-hot already reaches the network as part
+        of ``observation``, so any phase-dependent behavior is learned, not
+        looked up from a table.
+        """
+
+        del phase
+        raw = self.net(observation).reshape(-1, self.horizon, N_COSTS)
+        weights = nn.functional.softplus(raw)
         return torch.clamp(weights, min=1e-3, max=500.0)
 
 
@@ -450,18 +571,39 @@ class OnlineActorCriticACMPC:
         self.device = resolve_device(self.config.device)
         torch.manual_seed(self.config.seed)
         np.random.seed(self.config.seed)
-        self.actor = AdaptiveCostActor(
-            self.mpc_config.horizon,
-            self.config.hidden_dim,
-            self.config.weight_delta_fraction,
-            self.config.initial_log_std,
-            self.config.phase_priors,
-        ).to(self.device)
+        if self.config.use_prior_free_actor:
+            self.actor: nn.Module = PriorFreeCostActor(
+                self.mpc_config.horizon,
+                self.config.hidden_dim,
+                self.config.initial_log_std,
+                self.config.prior_free_initial_weights,
+            ).to(self.device)
+        else:
+            self.actor = AdaptiveCostActor(
+                self.mpc_config.horizon,
+                self.config.hidden_dim,
+                self.config.weight_delta_fraction,
+                self.config.initial_log_std,
+                self.config.phase_priors,
+            ).to(self.device)
         self.critic = ValueCritic(self.config.hidden_dim).to(self.device)
         self.mpc = DifferentiableBimanualMPC(self.mpc_config).to(self.device)
         self.actor_optimizer = torch.optim.Adam(self.actor.parameters(), lr=self.config.actor_lr)
         self.critic_optimizer = torch.optim.Adam(self.critic.parameters(), lr=self.config.critic_lr)
         self.update_count = 0
+        # maximum_online_actor_delta only bounds each *individual* update's
+        # movement -- it does nothing to stop thousands of small, individually
+        # legal updates from cumulatively drifting the actor far from the
+        # known-safe engineered prior (observed: a 100-episode online run on
+        # the hardest box-catch curriculum stage went from 81%/93% success in
+        # the first ~40 episodes to ~38% in the back half, after ~1600+
+        # cumulative updates, driven by INTERCEPT's velocity weight and
+        # GRASPED's force weight drifting substantially off their tuned
+        # values). This reference snapshot anchors an optional cumulative
+        # cap in update() below. It reflects the cold-init (zero-residual)
+        # actor unless overwritten by load() from a checkpoint that saved
+        # its own reference.
+        self._reference_actor_state = [p.detach().clone() for p in self.actor.parameters()]
 
     def act(
         self,
@@ -649,6 +791,17 @@ class OnlineActorCriticACMPC:
                 final_kl = self._policy_kl(batch)
             actor_delta = self._actor_delta(actor_before)
 
+        if online and self.config.maximum_cumulative_actor_delta is not None:
+            cumulative_delta = self._actor_delta(self._reference_actor_state)
+            if cumulative_delta > self.config.maximum_cumulative_actor_delta:
+                scale = self.config.maximum_cumulative_actor_delta / max(cumulative_delta, 1e-12)
+                with torch.no_grad():
+                    for parameter, reference in zip(
+                        self.actor.parameters(), self._reference_actor_state
+                    ):
+                        parameter.copy_(reference + scale * (parameter - reference))
+                actor_delta = self._actor_delta(actor_before)
+
         self.update_count += 1
         return PPOUpdateSummary(
             applied=True,
@@ -722,6 +875,12 @@ class OnlineActorCriticACMPC:
                 "update_count": self.update_count,
                 "mpc_config": vars(self.mpc_config),
                 "learning_config": vars(self.config),
+                # The cumulative-drift anchor (see maximum_cumulative_actor_delta)
+                # must survive across episodes/checkpoint reloads -- otherwise
+                # each fresh run_box_catch() call would reset "cumulative
+                # distance" back to zero and the cap would never actually
+                # bind.
+                "reference_actor": [p.detach().cpu() for p in self._reference_actor_state],
             },
             path,
         )
@@ -734,6 +893,14 @@ class OnlineActorCriticACMPC:
             self.actor_optimizer.load_state_dict(checkpoint["actor_optimizer"])
             self.critic_optimizer.load_state_dict(checkpoint["critic_optimizer"])
         self.update_count = int(checkpoint.get("update_count", 0))
+        # Older checkpoints (saved before maximum_cumulative_actor_delta
+        # existed) have no "reference_actor" -- keep this instance's cold-init
+        # reference rather than erroring, since that is the best available
+        # anchor in that case.
+        if "reference_actor" in checkpoint:
+            self._reference_actor_state = [
+                tensor.to(self.device) for tensor in checkpoint["reference_actor"]
+            ]
 
     def _tensor(self, value: np.ndarray) -> torch.Tensor:
         return torch.as_tensor(value, dtype=torch.float32, device=self.device)

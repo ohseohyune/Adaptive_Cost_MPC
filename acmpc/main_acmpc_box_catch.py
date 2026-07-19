@@ -143,6 +143,43 @@ class AcmpcBoxCatchConfig:
     rollout_size: int = 16
     offline_training: bool = False
     maximum_online_actor_delta: float = 0.02
+    # Bounds cumulative drift from the engineered prior across all episodes
+    # sharing a checkpoint. Without this, a curriculum training loop's
+    # online updates (bounded individually by maximum_online_actor_delta,
+    # but with no cap on their sum) can slowly walk the actor away from a
+    # validated prior into a much worse region -- measured on the "full"
+    # curriculum stage: 81%/93% success in episodes 0-40 degrading to ~38%
+    # by episodes 74-99 (~1600+ cumulative updates), specifically via
+    # INTERCEPT's first-horizon-step velocity weight dropping ~62% below
+    # its tuned value and GRASPED's force weight rising ~55% above it.
+    maximum_cumulative_actor_delta: Optional[float] = 0.4
+    # 3-way ablation switch (see acmpc_box_catch_integration_status.md):
+    # False (default) = AdaptiveCostActor, a bounded residual around
+    # _BOX_CATCH_PHASE_PRIORS. True = PriorFreeCostActor, cost weights
+    # learned from scratch via PPO with no engineered phase prior at all --
+    # _BOX_CATCH_PHASE_PRIORS is then unused.
+    use_prior_free_actor: bool = False
+    # A phase-agnostic single ratio (object, grasp, force, velocity,
+    # smoothness -- COST_NAMES order), not a per-phase table -- the plain
+    # average of _BOX_CATCH_PHASE_PRIORS's 5 rows per column. A uniform
+    # scalar here (all 5 equal) was tried first and never produced enough
+    # tracking aggressiveness to close the gap to a fast box even when the
+    # box was slowed and moved closer (see PriorFreeCostActor's docstring):
+    # equal weights make the smoothness term (resists changing velocity)
+    # compete one-for-one with object/grasp tracking. This keeps the
+    # ablation "no per-phase engineered table" while breaking that symmetry.
+    prior_free_initial_weights: tuple[float, float, float, float, float] = (
+        25.2,
+        115.6,
+        25.71,
+        2.7,
+        0.98,
+    )
+    # Amplifies only the contact/hold-related reward terms (see _reward's
+    # docstring-comment). 1.0 (default) is a no-op; the prior-free training
+    # curriculum raises this since it rarely reaches contact at all early on
+    # and needs a stronger signal on the rare occasions it does.
+    hold_reward_scale: float = 1.0
     mpc_horizon: int = 6
     mpc_velocity_limit: float = 1.8
     # A too-small lookahead starves the impedance controller's spring force
@@ -245,6 +282,7 @@ def _reward(
     phase: CatchPhase,
     force_limit_exceeded: bool,
     emergency: bool,
+    hold_reward_scale: float = 1.0,
 ) -> float:
     progress = 25.0 * (previous_endpoint_error - endpoint_error)
     endpoint_penalty = 2.5 * endpoint_error
@@ -263,12 +301,19 @@ def _reward(
     }[phase]
     safety_penalty = 3.0 if force_limit_exceeded else 0.0
     safety_penalty += 5.0 if emergency else 0.0
+    # hold_reward_scale (default 1.0, exact no-op) amplifies only the
+    # reward *for holding contact* (contact_reward/bilateral_bonus/
+    # phase_bonus), not the approach-tracking or safety terms. A from-scratch
+    # (no engineered prior) actor rarely reaches contact at all early in
+    # training, so whatever reward it does get from a brief, unstable touch
+    # is easily washed out by the denser per-step tracking/effort terms that
+    # fire on every single step regardless of phase -- amplifying the
+    # holding-specific reward gives a stronger, clearer gradient toward
+    # "keep this contact" the few times contact is actually reached.
     return float(
         progress
         - endpoint_penalty
-        + contact_reward
-        + bilateral_bonus
-        + phase_bonus
+        + hold_reward_scale * (contact_reward + bilateral_bonus + phase_bonus)
         - force_balance_penalty
         - effort_penalty
         - safety_penalty
@@ -397,6 +442,9 @@ def run_box_catch(config: Optional[AcmpcBoxCatchConfig] = None) -> BoxCatchSumma
             initial_log_std=float(np.log(max(config.exploration_std, 1e-6))),
             phase_priors=_BOX_CATCH_PHASE_PRIORS,
             maximum_online_actor_delta=config.maximum_online_actor_delta,
+            maximum_cumulative_actor_delta=config.maximum_cumulative_actor_delta,
+            use_prior_free_actor=config.use_prior_free_actor,
+            prior_free_initial_weights=config.prior_free_initial_weights,
         ),
     )
     if config.checkpoint_path and Path(config.checkpoint_path).exists():
@@ -739,6 +787,13 @@ def run_box_catch(config: Optional[AcmpcBoxCatchConfig] = None) -> BoxCatchSumma
                     time_to_contact=remaining_ttc,
                     prediction_confidence=prediction.confidence,
                     phase=bimanual_phase,
+                    # Measured across box-catch rollouts (see
+                    # build_bimanual_observation's docstring): x reaches
+                    # -1.35 to -1.47 m/s, z reaches ~3.9 m/s by first
+                    # contact, y stays near zero (+-0.025 m/s). The shared
+                    # default (0.5 on all axes) saturates x 100% and z 65%
+                    # of the time during INTERCEPT/PRE_CONTACT.
+                    object_velocity_scale=(1.5, 0.2, 4.0),
                 )
 
                 if last_observation is not None and config.online_learning:
@@ -751,6 +806,7 @@ def run_box_catch(config: Optional[AcmpcBoxCatchConfig] = None) -> BoxCatchSumma
                         phase=phase,
                         force_limit_exceeded=impact.force_limit_exceeded,
                         emergency=impact.emergency,
+                        hold_reward_scale=config.hold_reward_scale,
                     )
                     rollout.add(
                         observation=last_observation,
