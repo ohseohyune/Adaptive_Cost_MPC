@@ -42,6 +42,11 @@ from control.squeeze import (
     rotation_to_quaternion,
 )
 from box_squeeze.main_box_squeeze import LEFT_HOME_Q, RIGHT_HOME_Q
+from control.squeeze.mujoco_ids import (
+    actuator_ids as _actuator_ids,
+    require_id as _require_id,
+    smoothstep as _smoothstep,
+)
 from robot.ffw_config import FFW_ARMS, FFW_GRIPPERS
 
 
@@ -113,25 +118,6 @@ class DynamicSqueezeSummary:
     capture_drift_m: float
     grippers_remained_open: bool
     failure_reason: str
-
-
-def _smoothstep(value: float) -> float:
-    value = float(np.clip(value, 0.0, 1.0))
-    return value * value * (3.0 - 2.0 * value)
-
-
-def _require_id(model: mujoco.MjModel, kind: mujoco.mjtObj, name: str) -> int:
-    value = mujoco.mj_name2id(model, kind, name)
-    if value < 0:
-        raise ValueError(f"MuJoCo object not found: {name}")
-    return int(value)
-
-
-def _actuator_ids(model: mujoco.MjModel, names: tuple[str, ...]) -> np.ndarray:
-    return np.asarray(
-        [_require_id(model, mujoco.mjtObj.mjOBJ_ACTUATOR, name) for name in names],
-        dtype=int,
-    )
 
 
 def _disable_duplicate_end_effector_collisions(

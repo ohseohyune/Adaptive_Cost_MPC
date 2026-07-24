@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from control.clik.orientation import normalize, rotation_from_axis_alignment
+from control.clik.orientation import rotation_from_axis_alignment
 
 
 # ── gripper convention ─────────────────────────────────────────────────────────

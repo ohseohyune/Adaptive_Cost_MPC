@@ -224,7 +224,6 @@ def _observation(
     left_velocity: np.ndarray,
     right_velocity: np.ndarray,
     time_to_contact: float,
-    confidence: float,
     phase: BimanualPhase,
 ) -> np.ndarray:
     return build_bimanual_observation(
@@ -236,7 +235,6 @@ def _observation(
         left_force=snapshot.left_force,
         right_force=snapshot.right_force,
         time_to_contact=time_to_contact,
-        prediction_confidence=confidence,
         phase=phase,
     )
 
@@ -399,7 +397,6 @@ def run_demo(config: Optional[DemoConfig] = None) -> DemoSummary:
                     left_velocity=measured_velocity[:3],
                     right_velocity=measured_velocity[3:],
                     time_to_contact=ttc,
-                    confidence=prediction.confidence,
                     phase=phase,
                 )
                 if last_observation is not None and config.online_learning:

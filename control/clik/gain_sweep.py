@@ -279,20 +279,24 @@ def _divergence_reason(
     return None
 
 
-def _run_pose_clik_trial(
+def _simulate_pose_clik_trial(
+    *,
     model: mujoco.MjModel,
     data: mujoco.MjData,
     arm: SerialArm,
     target_position_fn,
     target_rotation: np.ndarray,
-    translation_gain: float,
-    rotation_gain: float,
+    gain: np.ndarray,
     damping: float,
     config: GainSweepConfig,
-) -> TrialResult:
-    """Run one headless MuJoCo trial and compute performance metrics."""
+) -> tuple[TrialTrace, np.ndarray, np.ndarray, float, str, int]:
+    """Step the sim to the horizon or first divergence; return the raw trace.
 
-    gain = make_pose_gain(rotation_gain, translation_gain)
+    Also returns the per-step joint-velocity vectors and total-error series
+    (needed by the caller for control-smoothness/oscillation metrics but not
+    part of TrialTrace), plus the loop-only diagnostics.
+    """
+
     times: list[float] = []
     position_errors: list[float] = []
     rotation_errors: list[float] = []
@@ -361,50 +365,83 @@ def _run_pose_clik_trial(
         mujoco.mj_step(model, data)
         steps += 1
 
-    time_array = np.asarray(times, dtype=float)
-    position_array = np.asarray(position_errors, dtype=float)
-    rotation_array = np.asarray(rotation_errors, dtype=float)
-    total_array = np.asarray(total_errors, dtype=float)
+    trace = TrialTrace(
+        times=np.asarray(times, dtype=float),
+        position_errors=np.asarray(position_errors, dtype=float),
+        rotation_errors=np.asarray(rotation_errors, dtype=float),
+        joint_velocity_norms=np.asarray(joint_velocity_norms, dtype=float),
+        min_singular_values=np.asarray(min_singular_values, dtype=float),
+        condition_numbers=np.asarray(condition_numbers, dtype=float),
+        manipulability_values=np.asarray(manipulability_values, dtype=float),
+    )
     joint_velocity_array = np.asarray(joint_velocities, dtype=float)
-    joint_velocity_norm_array = np.asarray(joint_velocity_norms, dtype=float)
-    min_singular_array = np.asarray(min_singular_values, dtype=float)
-    condition_array = np.asarray(condition_numbers, dtype=float)
-    manipulability_array = np.asarray(manipulability_values, dtype=float)
+    total_array = np.asarray(total_errors, dtype=float)
+    return trace, joint_velocity_array, total_array, max_joint_velocity_norm, failure_reason, steps
+
+
+def _run_pose_clik_trial(
+    model: mujoco.MjModel,
+    data: mujoco.MjData,
+    arm: SerialArm,
+    target_position_fn,
+    target_rotation: np.ndarray,
+    translation_gain: float,
+    rotation_gain: float,
+    damping: float,
+    config: GainSweepConfig,
+) -> TrialResult:
+    """Run one headless MuJoCo trial and compute performance metrics."""
+
+    gain = make_pose_gain(rotation_gain, translation_gain)
+    trace, joint_velocity_array, total_array, max_joint_velocity_norm, failure_reason, steps = (
+        _simulate_pose_clik_trial(
+            model=model,
+            data=data,
+            arm=arm,
+            target_position_fn=target_position_fn,
+            target_rotation=target_rotation,
+            gain=gain,
+            damping=damping,
+            config=config,
+        )
+    )
 
     final_position_error_norm = (
-        float(position_array[-1]) if len(position_array) else math.inf
+        float(trace.position_errors[-1]) if len(trace.position_errors) else math.inf
     )
     final_rotation_error_norm = (
-        float(rotation_array[-1]) if len(rotation_array) else math.inf
+        float(trace.rotation_errors[-1]) if len(trace.rotation_errors) else math.inf
     )
-    position_rms_error = _root_mean_square(position_array)
-    rotation_rms_error = _root_mean_square(rotation_array)
-    peak_position_error_norm = _peak(position_array)
-    peak_rotation_error_norm = _peak(rotation_array)
+    position_rms_error = _root_mean_square(trace.position_errors)
+    rotation_rms_error = _root_mean_square(trace.rotation_errors)
+    peak_position_error_norm = _peak(trace.position_errors)
+    peak_rotation_error_norm = _peak(trace.rotation_errors)
     target_reached_time_s = _first_time_within_tolerance(
-        time_array,
-        position_array,
-        rotation_array,
+        trace.times,
+        trace.position_errors,
+        trace.rotation_errors,
         config.position_tolerance,
         config.rotation_tolerance,
     )
     settling_time_s = _settling_time(
-        time_array,
-        position_array,
-        rotation_array,
+        trace.times,
+        trace.position_errors,
+        trace.rotation_errors,
         config.position_tolerance,
         config.rotation_tolerance,
         config.settling_window_s,
     )
     oscillation_metric = _oscillation_metric(total_array)
-    mean_joint_velocity_norm = _mean_finite(joint_velocity_norm_array)
+    mean_joint_velocity_norm = _mean_finite(trace.joint_velocity_norms)
     control_smoothness = _control_smoothness(joint_velocity_array)
-    mean_min_singular_value = _mean_finite(min_singular_array)
+    mean_min_singular_value = _mean_finite(trace.min_singular_values)
     min_min_singular_value = (
-        float(np.nanmin(min_singular_array)) if len(min_singular_array) else math.inf
+        float(np.nanmin(trace.min_singular_values))
+        if len(trace.min_singular_values)
+        else math.inf
     )
-    max_condition_number = _peak(condition_array)
-    mean_manipulability = _mean_finite(manipulability_array)
+    max_condition_number = _peak(trace.condition_numbers)
+    mean_manipulability = _mean_finite(trace.manipulability_values)
     diverged = bool(failure_reason)
     score = _score_trial(
         position_rms_error=position_rms_error,
@@ -447,15 +484,6 @@ def _run_pose_clik_trial(
         diverged=diverged,
         failure_reason=failure_reason,
         score=score,
-    )
-    trace = TrialTrace(
-        times=time_array,
-        position_errors=position_array,
-        rotation_errors=rotation_array,
-        joint_velocity_norms=joint_velocity_norm_array,
-        min_singular_values=min_singular_array,
-        condition_numbers=condition_array,
-        manipulability_values=manipulability_array,
     )
     return result, trace
 

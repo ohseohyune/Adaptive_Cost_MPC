@@ -377,7 +377,7 @@ def run_sc4_sc5(sm_cfg: GraspSMConfig, viewer=None) -> tuple[SCResult, SCResult]
 
     # Print state history for debugging
     print(f"    States seen: {[s.value for s in all_states_seen]}")
-    print(f"    Transitions: " +
+    print("    Transitions: " +
           "  ".join(f"{tr.from_state.value}→{tr.to_state.value} @{tr.time:.2f}s"
                     for tr in sm.history))
 

@@ -342,6 +342,8 @@ class NullSpaceQPController:
         self._ensure_solver(P, q_vector, G, lower, upper)
         self._update_solver(P, q_vector, G, lower, upper)
         result = self._solver.solve()
+        # Accept an inaccurate-but-feasible iterate rather than silently
+        # falling back to z=0, which would otherwise mask marginal OSQP runs.
         status = str(result.info.status)
         if status.lower() in {"solved", "solved inaccurate"}:
             z = np.asarray(result.x, dtype=float).reshape(self.n_dof)

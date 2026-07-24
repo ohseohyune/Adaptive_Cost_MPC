@@ -44,7 +44,6 @@ from control.clik.impedance import (
     CartesianImpedanceConfig,
     CartesianImpedanceController,
     cartesian_force_to_qfrc,
-    ee_jacobian_world,
 )
 from control.clik.kinematics import get_ee_transform
 from robot.ffw_config import FFW_ARMS

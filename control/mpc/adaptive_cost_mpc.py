@@ -118,7 +118,6 @@ class AdaptiveCostMPC:
         xdot_object:  Optional[np.ndarray] = None,
     ) -> MPCResult:
         n_dof = self.n_dof
-        n_s   = self._n_s
         N     = self.config.horizon
         dt    = self.config.dt
 

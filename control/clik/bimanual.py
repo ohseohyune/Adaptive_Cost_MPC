@@ -400,6 +400,76 @@ def adaptive_manipulability_damping(
     return damping
 
 
+def _compute_manipulability_state(
+    model: mujoco.MjModel,
+    data: mujoco.MjData,
+    left_arm: SerialArm,
+    right_arm: SerialArm,
+    left_geometric_jacobian: np.ndarray,
+    right_geometric_jacobian: np.ndarray,
+    *,
+    damping: float,
+    manipulability_gain: float,
+    manipulability_gradient_step: float,
+    max_manipulability_command: float | None,
+    singularity_warning_threshold: float,
+    adaptive_damping_alpha: float,
+    adaptive_damping_epsilon: float,
+    adaptive_damping_max: float | None,
+) -> "ManipulabilityState":
+    """Manipulability, its gradient, and the resulting adaptive damping/secondary velocity."""
+
+    left_manipulability = yoshikawa_manipulability(left_geometric_jacobian)
+    right_manipulability = yoshikawa_manipulability(right_geometric_jacobian)
+    min_manipulability = min(left_manipulability, right_manipulability)
+    adaptive_damping = adaptive_manipulability_damping(
+        base_damping=damping,
+        manipulability_min=min_manipulability,
+        alpha=adaptive_damping_alpha,
+        epsilon=adaptive_damping_epsilon,
+        max_damping=adaptive_damping_max,
+    )
+    is_near_singularity = min_manipulability < singularity_warning_threshold
+
+    if manipulability_gain > 0.0:
+        left_manip_gradient = manipulability_gradient(
+            model,
+            data,
+            left_arm,
+            manipulability_gradient_step,
+        )
+        right_manip_gradient = manipulability_gradient(
+            model,
+            data,
+            right_arm,
+            manipulability_gradient_step,
+        )
+    else:
+        left_manip_gradient = np.zeros(left_arm.dof)
+        right_manip_gradient = np.zeros(right_arm.dof)
+    stacked_manip_gradient = np.concatenate(
+        [left_manip_gradient, right_manip_gradient]
+    )
+    manipulability_velocity = _limit_vector_norm(
+        float(manipulability_gain) * stacked_manip_gradient,
+        max_manipulability_command,
+    )
+    return ManipulabilityState(
+        left=left_manipulability,
+        right=right_manipulability,
+        minimum=min_manipulability,
+        left_gradient=left_manip_gradient,
+        right_gradient=right_manip_gradient,
+        stacked_gradient=stacked_manip_gradient,
+        velocity=manipulability_velocity,
+        velocity_norm=float(np.linalg.norm(manipulability_velocity)),
+        left_condition_number=jacobian_condition_number(left_geometric_jacobian),
+        right_condition_number=jacobian_condition_number(right_geometric_jacobian),
+        adaptive_damping=adaptive_damping,
+        is_near_singularity=is_near_singularity,
+    )
+
+
 def joint_limit_margin(
     q_current: np.ndarray,
     q_low: np.ndarray,
@@ -1260,55 +1330,31 @@ def bimanual_object_clik_step(
         right_position_jacobian,
         right_angular_jacobian,
     )
-    left_manipulability = yoshikawa_manipulability(left_geometric_jacobian)
-    right_manipulability = yoshikawa_manipulability(right_geometric_jacobian)
-    min_manipulability = min(left_manipulability, right_manipulability)
-    adaptive_damping = adaptive_manipulability_damping(
-        base_damping=damping,
-        manipulability_min=min_manipulability,
-        alpha=adaptive_damping_alpha,
-        epsilon=adaptive_damping_epsilon,
-        max_damping=adaptive_damping_max,
+    manipulability_state = _compute_manipulability_state(
+        model,
+        data,
+        left_arm,
+        right_arm,
+        left_geometric_jacobian,
+        right_geometric_jacobian,
+        damping=damping,
+        manipulability_gain=manipulability_gain,
+        manipulability_gradient_step=manipulability_gradient_step,
+        max_manipulability_command=max_manipulability_command,
+        singularity_warning_threshold=singularity_warning_threshold,
+        adaptive_damping_alpha=adaptive_damping_alpha,
+        adaptive_damping_epsilon=adaptive_damping_epsilon,
+        adaptive_damping_max=adaptive_damping_max,
     )
-    is_near_singularity = min_manipulability < singularity_warning_threshold
-
-    if manipulability_gain > 0.0:
-        left_manip_gradient = manipulability_gradient(
-            model,
-            data,
-            left_arm,
-            manipulability_gradient_step,
-        )
-        right_manip_gradient = manipulability_gradient(
-            model,
-            data,
-            right_arm,
-            manipulability_gradient_step,
-        )
-    else:
-        left_manip_gradient = np.zeros(left_arm.dof)
-        right_manip_gradient = np.zeros(right_arm.dof)
-    stacked_manip_gradient = np.concatenate(
-        [left_manip_gradient, right_manip_gradient]
-    )
-    manipulability_velocity = _limit_vector_norm(
-        float(manipulability_gain) * stacked_manip_gradient,
-        max_manipulability_command,
-    )
-    manipulability_state = ManipulabilityState(
-        left=left_manipulability,
-        right=right_manipulability,
-        minimum=min_manipulability,
-        left_gradient=left_manip_gradient,
-        right_gradient=right_manip_gradient,
-        stacked_gradient=stacked_manip_gradient,
-        velocity=manipulability_velocity,
-        velocity_norm=float(np.linalg.norm(manipulability_velocity)),
-        left_condition_number=jacobian_condition_number(left_geometric_jacobian),
-        right_condition_number=jacobian_condition_number(right_geometric_jacobian),
-        adaptive_damping=adaptive_damping,
-        is_near_singularity=is_near_singularity,
-    )
+    left_manipulability = manipulability_state.left
+    right_manipulability = manipulability_state.right
+    min_manipulability = manipulability_state.minimum
+    left_manip_gradient = manipulability_state.left_gradient
+    right_manip_gradient = manipulability_state.right_gradient
+    stacked_manip_gradient = manipulability_state.stacked_gradient
+    manipulability_velocity = manipulability_state.velocity
+    adaptive_damping = manipulability_state.adaptive_damping
+    is_near_singularity = manipulability_state.is_near_singularity
 
     left_dof = left_arm.dof
     right_dof = right_arm.dof

@@ -30,7 +30,6 @@ if str(PROJECT_ROOT) not in sys.path:
 from control.clik import build_serial_arm
 from control.clik.catching import adaptive_stiffness
 from control.clik.contact import finger_geom_ids, get_contact_forces, total_normal_force
-from control.clik.dynamics import arm_joint_state
 from control.clik.grasp_state_machine import GraspSMConfig, GraspState, GraspStateMachine
 from control.clik.impedance import (
     CartesianImpedanceConfig,

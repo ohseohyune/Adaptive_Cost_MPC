@@ -42,7 +42,6 @@ def sc1_observation() -> tuple[bool, str]:
         left_force=2.0,
         right_force=2.2,
         time_to_contact=0.3,
-        prediction_confidence=0.8,
         phase=BimanualPhase.GRASPING,
     )
     ok = obs.shape == (OBS_DIM,) and np.isfinite(obs).all()

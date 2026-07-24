@@ -345,6 +345,62 @@ class PPOCostAdapter:
 
         actor_before = [parameter.detach().clone() for parameter in self.actor.parameters()]
         epochs = self.config.online_epochs if online else self.config.training_epochs
+        epochs_completed, actor_losses, critic_losses, entropies, stop_for_kl = (
+            self._run_ppo_epochs(
+                observations=observations,
+                actions=actions,
+                old_log_probabilities=old_log_probabilities,
+                advantages_tensor=advantages_tensor,
+                returns_tensor=returns_tensor,
+                transitions=transitions,
+                epochs=epochs,
+                online=online,
+            )
+        )
+
+        actor_delta = self._actor_delta(actor_before)
+        if online and actor_delta > self.config.maximum_online_actor_delta:
+            scale = self.config.maximum_online_actor_delta / max(actor_delta, 1e-12)
+            with torch.no_grad():
+                for parameter, previous in zip(self.actor.parameters(), actor_before):
+                    parameter.copy_(previous + scale * (parameter - previous))
+            actor_delta = self._actor_delta(actor_before)
+
+        final_kl, actor_delta = self._enforce_kl_trust_region(
+            observations=observations,
+            actions=actions,
+            old_log_probabilities=old_log_probabilities,
+            actor_before=actor_before,
+            online=online,
+            actor_delta=actor_delta,
+        )
+
+        self.update_count += 1
+        return PPOUpdateSummary(
+            applied=True,
+            reason="target KL reached" if stop_for_kl else "updated",
+            transitions=transitions,
+            epochs=epochs_completed,
+            actor_loss=float(np.mean(actor_losses)) if actor_losses else 0.0,
+            critic_loss=float(np.mean(critic_losses)) if critic_losses else 0.0,
+            entropy=float(np.mean(entropies)) if entropies else 0.0,
+            approximate_kl=final_kl,
+            actor_parameter_delta=actor_delta,
+        )
+
+    def _run_ppo_epochs(
+        self,
+        *,
+        observations: torch.Tensor,
+        actions: torch.Tensor,
+        old_log_probabilities: torch.Tensor,
+        advantages_tensor: torch.Tensor,
+        returns_tensor: torch.Tensor,
+        transitions: int,
+        epochs: int,
+        online: bool,
+    ) -> tuple[int, list[float], list[float], list[float], bool]:
+        """Run clipped-PPO minibatch epochs, updating actor/critic in place."""
         epochs_completed = 0
         actor_losses: list[float] = []
         critic_losses: list[float] = []
@@ -401,14 +457,19 @@ class PPOCostAdapter:
             if stop_for_kl:
                 break
 
-        actor_delta = self._actor_delta(actor_before)
-        if online and actor_delta > self.config.maximum_online_actor_delta:
-            scale = self.config.maximum_online_actor_delta / max(actor_delta, 1e-12)
-            with torch.no_grad():
-                for parameter, previous in zip(self.actor.parameters(), actor_before):
-                    parameter.copy_(previous + scale * (parameter - previous))
-            actor_delta = self._actor_delta(actor_before)
+        return epochs_completed, actor_losses, critic_losses, entropies, stop_for_kl
 
+    def _enforce_kl_trust_region(
+        self,
+        *,
+        observations: torch.Tensor,
+        actions: torch.Tensor,
+        old_log_probabilities: torch.Tensor,
+        actor_before: list[torch.Tensor],
+        online: bool,
+        actor_delta: float,
+    ) -> tuple[float, float]:
+        """Project the actor back toward actor_before until KL is back in trust region."""
         final_kl = self._policy_kl(
             observations, actions, old_log_probabilities
         )
@@ -443,19 +504,7 @@ class PPOCostAdapter:
                     observations, actions, old_log_probabilities
                 )
             actor_delta = self._actor_delta(actor_before)
-
-        self.update_count += 1
-        return PPOUpdateSummary(
-            applied=True,
-            reason="target KL reached" if stop_for_kl else "updated",
-            transitions=transitions,
-            epochs=epochs_completed,
-            actor_loss=float(np.mean(actor_losses)) if actor_losses else 0.0,
-            critic_loss=float(np.mean(critic_losses)) if critic_losses else 0.0,
-            entropy=float(np.mean(entropies)) if entropies else 0.0,
-            approximate_kl=final_kl,
-            actor_parameter_delta=actor_delta,
-        )
+        return final_kl, actor_delta
 
     def save(self, path: str | Path) -> None:
         path = Path(path)

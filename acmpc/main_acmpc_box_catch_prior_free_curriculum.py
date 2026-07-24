@@ -47,11 +47,17 @@ _NOMINAL_TARGET_FLIGHT_TIME_S = 0.56  # DynamicSideSqueezeConfig's own default
 
 @dataclass
 class PriorFreeCurriculumConfig:
-    episodes: int = 2000
-    ramp_episodes: int = 800
+    episodes: int = 5000
+    ramp_episodes: int = 3000
     base_seed: int = 7
     device: str = "cuda"
-    hold_reward_scale: float = 4.0
+    hold_reward_scale: float = 8.0
+    # Stop after this many wall-clock hours regardless of `episodes` --
+    # episode length varies a lot (a quick early failure vs. a full 5s hold
+    # attempt), so a fixed episode count is a poor way to target a fixed
+    # time budget. None (default) means episodes is the only stopping
+    # condition, unchanged from before this field existed.
+    max_hours: Optional[float] = None
     easy_flight_time_s: float = 0.15
     easy_speed_scale: float = 0.35
     checkpoint_path: Optional[str] = str(
@@ -100,8 +106,16 @@ def run_prior_free_curriculum(
     ):
         Path(checkpoint_path).unlink()
 
+    import time
+
+    t_start = time.time()
+    max_seconds = (
+        config.max_hours * 3600.0 if config.max_hours is not None else float("inf")
+    )
+
     results: list[dict] = []
-    for episode_index in range(config.episodes):
+    episode_index = 0
+    while episode_index < config.episodes and (time.time() - t_start) < max_seconds:
         seed = config.base_seed + episode_index
         squeeze, difficulty = _curriculum_squeeze_config(config, episode_index, seed)
         cfg = AcmpcBoxCatchConfig(
@@ -133,12 +147,20 @@ def run_prior_free_curriculum(
             bilateral_rate = sum(
                 r["bilateral_contact_time_s"] is not None for r in window
             ) / len(window)
+            elapsed_hours = (time.time() - t_start) / 3600.0
             print(
                 f"episodes {window[0]['episode']}-{window[-1]['episode']}: "
                 f"difficulty={difficulty:.2f} success_rate={rate:.3f} "
-                f"bilateral_contact_rate={bilateral_rate:.3f}",
+                f"bilateral_contact_rate={bilateral_rate:.3f} "
+                f"elapsed={elapsed_hours:.2f}h",
                 flush=True,
             )
+            if config.log_path:
+                log_path = Path(config.log_path)
+                log_path.parent.mkdir(parents=True, exist_ok=True)
+                with log_path.open("w") as stream:
+                    json.dump(results, stream, indent=2)
+        episode_index += 1
 
     if config.log_path:
         log_path = Path(config.log_path)
@@ -151,11 +173,12 @@ def run_prior_free_curriculum(
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--episodes", type=int, default=2000)
-    parser.add_argument("--ramp-episodes", type=int, default=800)
+    parser.add_argument("--episodes", type=int, default=5000)
+    parser.add_argument("--ramp-episodes", type=int, default=3000)
     parser.add_argument("--seed", type=int, default=7)
     parser.add_argument("--device", default="cuda")
-    parser.add_argument("--hold-reward-scale", type=float, default=4.0)
+    parser.add_argument("--hold-reward-scale", type=float, default=8.0)
+    parser.add_argument("--max-hours", type=float, default=None)
     parser.add_argument("--easy-flight-time", type=float, default=0.15)
     parser.add_argument("--easy-speed-scale", type=float, default=0.35)
     parser.add_argument(
@@ -184,6 +207,7 @@ def main() -> None:
             checkpoint_path=args.checkpoint,
             load_checkpoint=args.load_checkpoint,
             log_path=args.log,
+            max_hours=args.max_hours,
         )
     )
     overall = sum(r["success"] for r in results) / len(results)

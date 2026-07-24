@@ -35,7 +35,6 @@ from control.mpc.neural_cost_map import (
     INPUT_DIM,
     W_MAX,
     NeuralCostMap,
-    build_context,
     generate_supervised_data,
 )
 
@@ -102,7 +101,6 @@ def sc1_instantiation() -> tuple[bool, str]:
 # ── SC2: data generation shape & range ────────────────────────────────────────
 
 def sc2_data_generation() -> tuple[bool, str]:
-    N   = 4 * N_PER_STATE   # 4 states × N_PER_STATE (use small N here)
     X, Y = generate_supervised_data(n_per_state=N_PER_STATE, seed=0)
     msgs = []
     errs = []

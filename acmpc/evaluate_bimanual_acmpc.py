@@ -18,13 +18,12 @@ import statistics
 import sys
 from dataclasses import asdict
 from pathlib import Path
-from typing import Optional
 
 ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from acmpc.main_bimanual_acmpc import DemoConfig, DemoSummary, run_demo
+from acmpc.main_bimanual_acmpc import DemoConfig, run_demo
 
 # Fields from DemoSummary to aggregate as mean +/- std. Boolean/optional
 # fields (success, phase, timings) are summarized separately.

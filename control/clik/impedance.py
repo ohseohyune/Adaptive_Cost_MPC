@@ -24,7 +24,7 @@ so the 6D error vector and impedance wrench follow the same ordering.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 import mujoco
 import numpy as np

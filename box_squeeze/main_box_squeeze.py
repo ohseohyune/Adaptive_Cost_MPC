@@ -32,6 +32,11 @@ from control.squeeze import (
     SideSqueezeConfig,
     read_bilateral_pad_contact,
 )
+from control.squeeze.mujoco_ids import (
+    actuator_ids as _actuator_ids,
+    require_id as _require_id,
+    smoothstep as _smoothstep,
+)
 from robot.ffw_config import FFW_ARMS, FFW_GRIPPERS
 
 SCENE = ROOT / "model" / "robotis_ffw" / "scene_ffw_sg2_fixed_base_box_squeeze.xml"
@@ -76,25 +81,6 @@ class SqueezeSummary:
     final_box_drop_m: float
     final_box_lateral_drift_m: float
     grippers_remained_open: bool
-
-
-def _smoothstep(value: float) -> float:
-    value = float(np.clip(value, 0.0, 1.0))
-    return value * value * (3.0 - 2.0 * value)
-
-
-def _require_id(model: mujoco.MjModel, kind: mujoco.mjtObj, name: str) -> int:
-    value = mujoco.mj_name2id(model, kind, name)
-    if value < 0:
-        raise ValueError(f"MuJoCo object not found: {name}")
-    return int(value)
-
-
-def _actuator_ids(model: mujoco.MjModel, names: tuple[str, ...]) -> np.ndarray:
-    return np.asarray(
-        [_require_id(model, mujoco.mjtObj.mjOBJ_ACTUATOR, name) for name in names],
-        dtype=int,
-    )
 
 
 def _configure_impedance_axes(

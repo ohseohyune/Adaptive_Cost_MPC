@@ -1,0 +1,58 @@
+episodes 0-19: success_rate=0.800 mean_reward=0.00 mean_actor_loss=0.0000 mean_kl=0.0000 stage=full scheduler_success_rate=0.500
+episodes 20-39: success_rate=0.800 mean_reward=0.00 mean_actor_loss=0.0000 mean_kl=0.0000 stage=intermediate scheduler_success_rate=0.667
+episodes 40-59: success_rate=0.600 mean_reward=0.00 mean_actor_loss=0.0000 mean_kl=0.0000 stage=warmup scheduler_success_rate=0.750
+episodes 60-79: success_rate=0.650 mean_reward=0.00 mean_actor_loss=0.0000 mean_kl=0.0000 stage=intermediate scheduler_success_rate=0.750
+episodes 80-99: success_rate=0.750 mean_reward=0.00 mean_actor_loss=0.0000 mean_kl=0.0000 stage=full scheduler_success_rate=0.667
+episodes 100-119: success_rate=0.650 mean_reward=0.00 mean_actor_loss=0.0000 mean_kl=0.0000 stage=full scheduler_success_rate=0.600
+episodes 120-139: success_rate=0.650 mean_reward=0.00 mean_actor_loss=0.0000 mean_kl=0.0000 stage=full scheduler_success_rate=0.800
+episodes 140-159: success_rate=0.700 mean_reward=0.00 mean_actor_loss=0.0000 mean_kl=0.0000 stage=intermediate scheduler_success_rate=0.000
+episodes 160-179: success_rate=0.700 mean_reward=0.00 mean_actor_loss=0.0000 mean_kl=0.0000 stage=intermediate scheduler_success_rate=1.000
+episodes 180-199: success_rate=0.600 mean_reward=0.00 mean_actor_loss=0.0000 mean_kl=0.0000 stage=intermediate scheduler_success_rate=1.000
+episodes 200-219: success_rate=0.800 mean_reward=0.00 mean_actor_loss=0.0000 mean_kl=0.0000 stage=full scheduler_success_rate=0.000
+episodes 220-239: success_rate=0.700 mean_reward=0.00 mean_actor_loss=0.0000 mean_kl=0.0000 stage=full scheduler_success_rate=0.333
+episodes 240-259: success_rate=0.550 mean_reward=0.00 mean_actor_loss=0.0000 mean_kl=0.0000 stage=warmup scheduler_success_rate=0.600
+episodes 260-279: success_rate=0.600 mean_reward=0.00 mean_actor_loss=0.0000 mean_kl=0.0000 stage=warmup scheduler_success_rate=0.000
+episodes 280-299: success_rate=0.600 mean_reward=0.00 mean_actor_loss=0.0000 mean_kl=0.0000 stage=warmup scheduler_success_rate=0.333
+episodes 300-319: success_rate=0.750 mean_reward=0.00 mean_actor_loss=0.0000 mean_kl=0.0000 stage=warmup scheduler_success_rate=1.000
+episodes 320-339: success_rate=0.700 mean_reward=0.00 mean_actor_loss=0.0000 mean_kl=0.0000 stage=intermediate scheduler_success_rate=1.000
+episodes 340-359: success_rate=0.400 mean_reward=0.00 mean_actor_loss=0.0000 mean_kl=0.0000 stage=intermediate scheduler_success_rate=0.000
+episodes 360-379: success_rate=0.600 mean_reward=0.00 mean_actor_loss=0.0000 mean_kl=0.0000 stage=intermediate scheduler_success_rate=0.000
+episodes 380-399: success_rate=0.450 mean_reward=0.00 mean_actor_loss=0.0000 mean_kl=0.0000 stage=warmup scheduler_success_rate=0.667
+episodes 400-419: success_rate=0.700 mean_reward=0.00 mean_actor_loss=0.0000 mean_kl=0.0000 stage=intermediate scheduler_success_rate=1.000
+episodes 420-439: success_rate=0.600 mean_reward=0.00 mean_actor_loss=0.0000 mean_kl=0.0000 stage=warmup scheduler_success_rate=0.667
+episodes 440-459: success_rate=0.750 mean_reward=0.00 mean_actor_loss=0.0000 mean_kl=0.0000 stage=intermediate scheduler_success_rate=1.000
+episodes 460-479: success_rate=0.550 mean_reward=0.00 mean_actor_loss=0.0000 mean_kl=0.0000 stage=intermediate scheduler_success_rate=0.000
+episodes 480-499: success_rate=0.700 mean_reward=0.00 mean_actor_loss=0.0000 mean_kl=0.0000 stage=warmup scheduler_success_rate=1.000
+episodes 500-519: success_rate=0.700 mean_reward=0.00 mean_actor_loss=0.0000 mean_kl=0.0000 stage=intermediate scheduler_success_rate=0.500
+episodes 520-539: success_rate=0.500 mean_reward=0.00 mean_actor_loss=0.0000 mean_kl=0.0000 stage=warmup scheduler_success_rate=0.500
+episodes 540-559: success_rate=0.600 mean_reward=0.00 mean_actor_loss=0.0000 mean_kl=0.0000 stage=intermediate scheduler_success_rate=0.000
+episodes 560-579: success_rate=0.600 mean_reward=0.00 mean_actor_loss=0.0000 mean_kl=0.0000 stage=full scheduler_success_rate=0.333
+episodes 580-599: success_rate=0.500 mean_reward=0.00 mean_actor_loss=0.0000 mean_kl=0.0000 stage=intermediate scheduler_success_rate=0.000
+episodes 600-619: success_rate=0.750 mean_reward=0.00 mean_actor_loss=0.0000 mean_kl=0.0000 stage=intermediate scheduler_success_rate=1.000
+episodes 620-639: success_rate=0.700 mean_reward=0.00 mean_actor_loss=0.0000 mean_kl=0.0000 stage=warmup scheduler_success_rate=0.000
+episodes 640-659: success_rate=0.000 mean_reward=0.00 mean_actor_loss=0.0000 mean_kl=0.0000 stage=warmup scheduler_success_rate=0.000
+episodes 660-679: success_rate=0.000 mean_reward=0.00 mean_actor_loss=0.0000 mean_kl=0.0000 stage=warmup scheduler_success_rate=0.000
+episodes 680-699: success_rate=0.000 mean_reward=0.00 mean_actor_loss=0.0000 mean_kl=0.0000 stage=warmup scheduler_success_rate=0.000
+episodes 700-719: success_rate=0.000 mean_reward=0.00 mean_actor_loss=0.0000 mean_kl=0.0000 stage=warmup scheduler_success_rate=0.000
+episodes 720-739: success_rate=0.000 mean_reward=0.00 mean_actor_loss=0.0000 mean_kl=0.0000 stage=warmup scheduler_success_rate=0.000
+episodes 740-759: success_rate=0.000 mean_reward=0.00 mean_actor_loss=0.0000 mean_kl=0.0000 stage=warmup scheduler_success_rate=0.000
+episodes 760-779: success_rate=0.000 mean_reward=0.00 mean_actor_loss=0.0000 mean_kl=0.0000 stage=warmup scheduler_success_rate=0.000
+episodes 780-799: success_rate=0.000 mean_reward=0.00 mean_actor_loss=0.0000 mean_kl=0.0000 stage=warmup scheduler_success_rate=0.000
+episodes 800-819: success_rate=0.000 mean_reward=0.00 mean_actor_loss=0.0000 mean_kl=0.0000 stage=warmup scheduler_success_rate=0.000
+episodes 820-839: success_rate=0.000 mean_reward=0.00 mean_actor_loss=0.0000 mean_kl=0.0000 stage=warmup scheduler_success_rate=0.000
+episodes 840-859: success_rate=0.000 mean_reward=0.00 mean_actor_loss=0.0000 mean_kl=0.0000 stage=warmup scheduler_success_rate=0.000
+episodes 860-879: success_rate=0.000 mean_reward=0.00 mean_actor_loss=0.0000 mean_kl=0.0000 stage=warmup scheduler_success_rate=0.000
+episodes 880-899: success_rate=0.000 mean_reward=0.00 mean_actor_loss=0.0000 mean_kl=0.0000 stage=warmup scheduler_success_rate=0.000
+episodes 900-919: success_rate=0.000 mean_reward=0.00 mean_actor_loss=0.0000 mean_kl=0.0000 stage=warmup scheduler_success_rate=0.000
+episodes 920-939: success_rate=0.050 mean_reward=0.00 mean_actor_loss=0.0000 mean_kl=0.0000 stage=warmup scheduler_success_rate=0.000
+episodes 940-959: success_rate=0.000 mean_reward=0.00 mean_actor_loss=0.0000 mean_kl=0.0000 stage=warmup scheduler_success_rate=0.000
+episodes 960-979: success_rate=0.000 mean_reward=0.00 mean_actor_loss=0.0000 mean_kl=0.0000 stage=warmup scheduler_success_rate=0.000
+Traceback (most recent call last):
+  File "/tmp/run_prior_only_new_criterion.py", line 12, in <module>
+    run_curriculum_box_catch(cfg)
+  File "/home/seohy/colcon_ws/src/Adaptive_Cost_MPC/acmpc/main_acmpc_box_catch_curriculum.py", line 202, in run_curriculum_box_catch
+    summary = run_box_catch(episode_config)
+  File "/home/seohy/colcon_ws/src/Adaptive_Cost_MPC/acmpc/main_acmpc_box_catch.py", line 403, in run_box_catch
+    rng = np.random.default_rng(cfg.random_seed)
+ValueError: Error: geom 'left_squeeze_pad' not found in collision 0
+Element name 'dynamic_left_pad_box', id 0, line 21

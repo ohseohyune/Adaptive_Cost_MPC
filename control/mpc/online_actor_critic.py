@@ -31,6 +31,7 @@ import torch.nn as nn
 
 from control.mpc.ppo_common import (
     PPOUpdateSummary,
+    explained_variance,
     generalized_advantage_estimate,
     resolve_device,
 )
@@ -52,8 +53,33 @@ N_PHASES = len(BimanualPhase)
 
 # Observation layout:
 #   object velocity (3), endpoint errors left/right (6), EE velocities (6),
-#   normal forces (2), TTC/confidence (2), phase one-hot (5) = 24.
-OBS_DIM = 24
+#   normal forces (2), TTC (1), phase one-hot (N_PHASES) = 18 + N_PHASES.
+# prediction_confidence (BallisticBoxPredictor's sample-count warmup signal)
+# was dropped after an A/B comparison on the box-catch "full" curriculum
+# stage (N=50, paired) showed no measurable effect: 86% with the real value
+# vs 84% fixed at a constant 1.0 -- within noise, so the actor was not
+# meaningfully using this input.
+_NON_PHASE_OBS_DIM = 18
+
+
+def observation_dim(n_phases: int) -> int:
+    """Total observation width for a one-hot (or soft one-hot) of ``n_phases``.
+
+    Kept as a function (not just the ``OBS_DIM`` constant below) so a caller
+    with a different phase count than the shared ``BimanualPhase`` -- e.g. a
+    scenario with no manipulation phase -- can size its own actor/critic
+    input layer and rollout buffer consistently, without every caller of
+    this module being forced to share one global phase count.
+    """
+
+    return _NON_PHASE_OBS_DIM + int(n_phases)
+
+
+# Default observation width for the shared 5-member BimanualPhase enum.
+# Existing callers (the handle-grasp demo, its tests) rely on this exact
+# value and on ``phase=`` (below) producing a plain hard one-hot -- both stay
+# untouched no-ops for them.
+OBS_DIM = observation_dim(N_PHASES)
 
 
 def build_bimanual_observation(
@@ -66,8 +92,8 @@ def build_bimanual_observation(
     left_force: float,
     right_force: float,
     time_to_contact: float,
-    prediction_confidence: float,
-    phase: BimanualPhase,
+    phase: Optional[BimanualPhase] = None,
+    phase_encoding: Optional[np.ndarray] = None,
     object_velocity_scale: tuple[float, float, float] = (0.5, 0.5, 0.5),
 ) -> np.ndarray:
     """Build the normalized observation consumed by the cost actor.
@@ -84,6 +110,15 @@ def build_bimanual_observation(
     scale (e.g. (1.5, 0.2, 4.0), validated against measured box-catch value
     ranges) instead of changing this default, which stays an exact no-op for
     the existing handle-grasp demo.
+
+    Exactly one of ``phase``/``phase_encoding`` must be given. ``phase`` (a
+    single ``BimanualPhase``-like int) produces a plain hard one-hot over
+    ``N_PHASES`` -- the original, unchanged behavior. ``phase_encoding``
+    accepts a precomputed vector of any length instead (e.g. a smoothly
+    blended soft one-hot over a scenario-specific, smaller phase count) --
+    the observation width is derived from its length rather than the shared
+    ``N_PHASES``/``OBS_DIM`` constants, so a caller with fewer phases gets a
+    correspondingly narrower observation.
     """
 
     velocity = np.clip(
@@ -105,14 +140,22 @@ def build_bimanual_observation(
     ) / 0.5
     forces = np.clip(np.array([left_force, right_force], float) / 20.0, 0.0, 2.0)
     ttc = 1.0 if not np.isfinite(time_to_contact) else np.clip(time_to_contact / 2.0, 0.0, 1.0)
-    prediction = np.array([ttc, np.clip(prediction_confidence, 0.0, 1.0)])
-    one_hot = np.zeros(N_PHASES, dtype=float)
-    one_hot[int(phase)] = 1.0
+    prediction = np.array([ttc])
+    if phase_encoding is None:
+        if phase is None:
+            raise ValueError(
+                "build_bimanual_observation requires either phase or phase_encoding"
+            )
+        phase_encoding = np.zeros(N_PHASES, dtype=float)
+        phase_encoding[int(phase)] = 1.0
+    else:
+        phase_encoding = np.asarray(phase_encoding, dtype=float).reshape(-1)
     observation = np.concatenate(
-        [velocity, endpoint_errors, ee_velocities, forces, prediction, one_hot]
+        [velocity, endpoint_errors, ee_velocities, forces, prediction, phase_encoding]
     )
-    if observation.shape != (OBS_DIM,):
-        raise RuntimeError(f"internal observation shape {observation.shape} != {(OBS_DIM,)}")
+    expected_dim = observation_dim(phase_encoding.shape[0])
+    if observation.shape != (expected_dim,):
+        raise RuntimeError(f"internal observation shape {observation.shape} != {(expected_dim,)}")
     return np.clip(observation, -5.0, 5.0).astype(np.float32)
 
 
@@ -175,6 +218,13 @@ class OnlineActorCriticConfig:
     # the same across every phase/horizon step. See PriorFreeCostActor's
     # docstring for why a uniform scalar alone was not enough.
     prior_free_initial_weights: float | tuple[float, float, float, float, float] = 5.0
+    # Number of phases the actor/critic input layer and observation's
+    # phase-encoding slice are sized for. Defaults to the shared
+    # BimanualPhase count (5, an exact no-op for existing callers). A
+    # scenario with its own, smaller phase set (no per-phase table entry
+    # needed for phases it never uses) can override this -- phase_priors
+    # (when given) must then have exactly this many rows.
+    n_phases: int = N_PHASES
     device: str = "auto"
     seed: int = 7
 
@@ -188,6 +238,14 @@ class ACMPCAction:
     value: float
     log_prob: float
     entropy: float
+    # The (N_COSTS,) phase-prior row actually used by the actor for this
+    # action -- either a hard per-phase lookup (existing behavior) or a
+    # caller-supplied blend (e.g. a smoothstep interpolation across a phase
+    # transition). Stored so a PPO replay of this transition (see
+    # ACMPCRolloutBuffer/._distribution) reuses the exact same prior instead
+    # of re-deriving it from a bare phase index, which would not reproduce a
+    # mid-blend value.
+    phase_prior: np.ndarray
 
 
 class AdaptiveCostActor(nn.Module):
@@ -210,12 +268,13 @@ class AdaptiveCostActor(nn.Module):
         delta_fraction: float,
         initial_log_std: float = -3.2,
         phase_priors: Optional[tuple[tuple[float, ...], ...]] = None,
+        obs_dim: int = OBS_DIM,
     ) -> None:
         super().__init__()
         self.horizon = int(horizon)
         self.delta_fraction = float(delta_fraction)
         self.net = nn.Sequential(
-            nn.Linear(OBS_DIM, hidden_dim),
+            nn.Linear(obs_dim, hidden_dim),
             nn.LayerNorm(hidden_dim),
             nn.Tanh(),
             nn.Linear(hidden_dim, hidden_dim),
@@ -239,15 +298,25 @@ class AdaptiveCostActor(nn.Module):
     def forward(self, observation: torch.Tensor, phase: torch.Tensor) -> torch.Tensor:
         """Predict horizon-wise cost weights for a batch of observations.
 
-        ``phase`` is a ``(batch,)`` long tensor of ``BimanualPhase`` values so
-        a single call can cover a PPO minibatch mixing several phases.
+        ``phase`` accepts two shapes:
+        - ``(batch,)`` long tensor of ``BimanualPhase``-like indices (the
+          original behavior): each row's prior is a hard lookup into
+          ``self.phase_priors``.
+        - ``(batch, N_COSTS)`` float tensor: used directly as each row's
+          prior. This lets a caller (``OnlineActorCriticACMPC``) supply a
+          value that is not a single phase's table row -- e.g. a smoothstep
+          blend between two phases' rows across a transition -- without this
+          class needing to know anything about blending itself.
         """
 
         residual = torch.tanh(self.net(observation)).reshape(-1, self.horizon, N_COSTS)
-        phase_index = phase.to(device=observation.device, dtype=torch.long).reshape(-1)
-        base = self.phase_priors.to(device=observation.device, dtype=observation.dtype)[
-            phase_index
-        ]
+        if phase.dim() == 1:
+            phase_index = phase.to(device=observation.device, dtype=torch.long).reshape(-1)
+            base = self.phase_priors.to(device=observation.device, dtype=observation.dtype)[
+                phase_index
+            ]
+        else:
+            base = phase.to(device=observation.device, dtype=observation.dtype).reshape(-1, N_COSTS)
         weights = base.unsqueeze(1) * (1.0 + self.delta_fraction * residual)
         # 500 (not the previous 50) so a scenario needing a much stiffer
         # relative/grasp-tracking prior -- e.g. closing a large initial
@@ -298,11 +367,12 @@ class PriorFreeCostActor(nn.Module):
         hidden_dim: int,
         initial_log_std: float = -3.2,
         initial_weights: float | tuple[float, float, float, float, float] = 5.0,
+        obs_dim: int = OBS_DIM,
     ) -> None:
         super().__init__()
         self.horizon = int(horizon)
         self.net = nn.Sequential(
-            nn.Linear(OBS_DIM, hidden_dim),
+            nn.Linear(obs_dim, hidden_dim),
             nn.LayerNorm(hidden_dim),
             nn.Tanh(),
             nn.Linear(hidden_dim, hidden_dim),
@@ -322,27 +392,28 @@ class PriorFreeCostActor(nn.Module):
             self.net[-1].bias.copy_(bias_init)
         self.log_std = nn.Parameter(torch.full((6,), float(initial_log_std)))
 
-    def forward(self, observation: torch.Tensor, phase: torch.Tensor) -> torch.Tensor:
+    def forward(self, observation: torch.Tensor, phase_prior: torch.Tensor) -> torch.Tensor:
         """Predict horizon-wise cost weights for a batch of observations.
 
-        ``phase`` is accepted for interface parity with ``AdaptiveCostActor``
-        (both are called the same way by ``OnlineActorCriticACMPC``) but is
-        unused here -- the phase one-hot already reaches the network as part
-        of ``observation``, so any phase-dependent behavior is learned, not
-        looked up from a table.
+        ``phase_prior`` is accepted for interface parity with
+        ``AdaptiveCostActor`` (both are called the same way by
+        ``OnlineActorCriticACMPC``) but is unused here -- the phase
+        one-hot/soft-encoding already reaches the network as part of
+        ``observation``, so any phase-dependent behavior is learned, not
+        looked up from or blended against a table.
         """
 
-        del phase
+        del phase_prior
         raw = self.net(observation).reshape(-1, self.horizon, N_COSTS)
         weights = nn.functional.softplus(raw)
         return torch.clamp(weights, min=1e-3, max=500.0)
 
 
 class ValueCritic(nn.Module):
-    def __init__(self, hidden_dim: int) -> None:
+    def __init__(self, hidden_dim: int, obs_dim: int = OBS_DIM) -> None:
         super().__init__()
         self.net = nn.Sequential(
-            nn.Linear(OBS_DIM, hidden_dim),
+            nn.Linear(obs_dim, hidden_dim),
             nn.LayerNorm(hidden_dim),
             nn.Tanh(),
             nn.Linear(hidden_dim, hidden_dim),
@@ -413,12 +484,24 @@ class DifferentiableBimanualMPC(nn.Module):
         )
         center_ref = center_ref.reshape(batch, 3 * n)
         relative_ref = relative_reference[:, None, :].expand(-1, n, -1).reshape(batch, 3 * n)
-        relative_force_ref = relative_reference.clone()
-        rel_norm = torch.linalg.vector_norm(relative_force_ref, dim=1, keepdim=True).clamp_min(1e-6)
-        relative_force_ref = relative_force_ref * (
+        # COST_NAMES[2] ("force") is historically named after grip force but
+        # does not track any measured or predicted contact force -- it pulls
+        # the relative left/right separation toward a *compressed* position
+        # reference (relative_reference shrunk by a fixed grasp_compression
+        # distance), i.e. it is a compression-distance proxy for grip, not a
+        # force-tracking term. Measured contact force (from the physics
+        # engine) is only ever used by callers for their own observation/
+        # success/safety logic, never fed back into this QP as a target.
+        compressed_relative_ref = relative_reference.clone()
+        rel_norm = torch.linalg.vector_norm(compressed_relative_ref, dim=1, keepdim=True).clamp_min(
+            1e-6
+        )
+        compressed_relative_ref = compressed_relative_ref * (
             1.0 - self.config.grasp_compression / rel_norm
         )
-        relative_force_ref = relative_force_ref[:, None, :].expand(-1, n, -1).reshape(batch, 3 * n)
+        compressed_relative_ref = (
+            compressed_relative_ref[:, None, :].expand(-1, n, -1).reshape(batch, 3 * n)
+        )
         velocity_ref = object_velocities[:, None, :].expand(-1, n, -1)
         velocity_ref = torch.cat([velocity_ref, velocity_ref], dim=2).reshape(batch, 6 * n)
 
@@ -433,16 +516,16 @@ class DifferentiableBimanualMPC(nn.Module):
         for b in range(batch):
             w_object = torch.repeat_interleave(weights[b, :, 0], 3)
             w_grasp = torch.repeat_interleave(weights[b, :, 1], 3)
-            w_force = torch.repeat_interleave(weights[b, :, 2], 3)
+            w_compression = torch.repeat_interleave(weights[b, :, 2], 3)
             w_velocity = torch.repeat_interleave(weights[b, :, 3], 6)
             w_smooth = torch.repeat_interleave(weights[b, :, 4], 6)
 
             h = a_center.T @ (w_object[:, None] * a_center)
             rhs = a_center.T @ (w_object * (center_ref[b] - center_base[b]))
-            h = h + a_relative.T @ ((w_grasp + w_force)[:, None] * a_relative)
+            h = h + a_relative.T @ ((w_grasp + w_compression)[:, None] * a_relative)
             rhs = rhs + a_relative.T @ (
                 w_grasp * (relative_ref[b] - relative_base[b])
-                + w_force * (relative_force_ref[b] - relative_base[b])
+                + w_compression * (compressed_relative_ref[b] - relative_base[b])
             )
             h = h + torch.diag(w_velocity)
             rhs = rhs + w_velocity * velocity_ref[b]
@@ -476,6 +559,12 @@ class ACMPCRolloutBuffer:
     def __init__(self) -> None:
         self.observations: list[np.ndarray] = []
         self.phases: list[int] = []
+        # The (N_COSTS,) prior row the actor actually used for each
+        # transition's action (see ACMPCAction.phase_prior) -- replayed
+        # as-is during PPO update() instead of being re-derived from
+        # ``phases``, since a mid-blend prior cannot be reconstructed from a
+        # bare phase index alone.
+        self.phase_priors: list[np.ndarray] = []
         self.ee_positions: list[np.ndarray] = []
         self.object_positions: list[np.ndarray] = []
         self.object_velocities: list[np.ndarray] = []
@@ -506,6 +595,7 @@ class ACMPCRolloutBuffer:
     ) -> None:
         self.observations.append(np.asarray(observation, dtype=np.float32).copy())
         self.phases.append(int(phase))
+        self.phase_priors.append(np.asarray(action.phase_prior, dtype=np.float32).copy())
         self.ee_positions.append(np.asarray(ee_positions, dtype=np.float32).copy())
         self.object_positions.append(np.asarray(object_position, dtype=np.float32).copy())
         self.object_velocities.append(np.asarray(object_velocity, dtype=np.float32).copy())
@@ -533,6 +623,7 @@ class _MPCBatch:
 
     observations: torch.Tensor
     phases: torch.Tensor
+    phase_priors: torch.Tensor
     ee_positions: torch.Tensor
     object_positions: torch.Tensor
     object_velocities: torch.Tensor
@@ -545,6 +636,7 @@ class _MPCBatch:
         return _MPCBatch(
             observations=self.observations[indices],
             phases=self.phases[indices],
+            phase_priors=self.phase_priors[indices],
             ee_positions=self.ee_positions[indices],
             object_positions=self.object_positions[indices],
             object_velocities=self.object_velocities[indices],
@@ -571,12 +663,23 @@ class OnlineActorCriticACMPC:
         self.device = resolve_device(self.config.device)
         torch.manual_seed(self.config.seed)
         np.random.seed(self.config.seed)
+        self.obs_dim = observation_dim(self.config.n_phases)
+        if (
+            not self.config.use_prior_free_actor
+            and self.config.phase_priors is not None
+            and len(self.config.phase_priors) != self.config.n_phases
+        ):
+            raise ValueError(
+                f"phase_priors has {len(self.config.phase_priors)} rows but "
+                f"n_phases={self.config.n_phases}"
+            )
         if self.config.use_prior_free_actor:
             self.actor: nn.Module = PriorFreeCostActor(
                 self.mpc_config.horizon,
                 self.config.hidden_dim,
                 self.config.initial_log_std,
                 self.config.prior_free_initial_weights,
+                obs_dim=self.obs_dim,
             ).to(self.device)
         else:
             self.actor = AdaptiveCostActor(
@@ -585,8 +688,9 @@ class OnlineActorCriticACMPC:
                 self.config.weight_delta_fraction,
                 self.config.initial_log_std,
                 self.config.phase_priors,
+                obs_dim=self.obs_dim,
             ).to(self.device)
-        self.critic = ValueCritic(self.config.hidden_dim).to(self.device)
+        self.critic = ValueCritic(self.config.hidden_dim, obs_dim=self.obs_dim).to(self.device)
         self.mpc = DifferentiableBimanualMPC(self.mpc_config).to(self.device)
         self.actor_optimizer = torch.optim.Adam(self.actor.parameters(), lr=self.config.actor_lr)
         self.critic_optimizer = torch.optim.Adam(self.critic.parameters(), lr=self.config.critic_lr)
@@ -605,6 +709,30 @@ class OnlineActorCriticACMPC:
         # its own reference.
         self._reference_actor_state = [p.detach().clone() for p in self.actor.parameters()]
 
+    def _resolve_phase_prior(
+        self, phase: int, phase_prior: Optional[np.ndarray]
+    ) -> torch.Tensor:
+        """Return the (1, N_COSTS) prior row to feed the actor for this action.
+
+        ``phase_prior``, when given, is used directly -- this is how a caller
+        injects a blended (e.g. smoothstep-interpolated across a phase
+        transition) prior instead of a single phase's hard table row.
+        Otherwise falls back to the original hard lookup by ``phase`` (an
+        exact no-op for existing callers that never pass an override).
+        ``PriorFreeCostActor`` has no ``phase_priors`` table at all -- its
+        forward ignores this value entirely, so a zero placeholder is fine.
+        """
+
+        if phase_prior is not None:
+            return self._tensor(np.asarray(phase_prior, dtype=np.float32)).reshape(1, N_COSTS)
+        if hasattr(self.actor, "phase_priors"):
+            return (
+                self.actor.phase_priors[int(phase)]
+                .to(device=self.device, dtype=torch.float32)
+                .reshape(1, N_COSTS)
+            )
+        return torch.zeros(1, N_COSTS, device=self.device)
+
     def act(
         self,
         *,
@@ -616,9 +744,10 @@ class OnlineActorCriticACMPC:
         relative_reference: np.ndarray,
         previous_velocity: np.ndarray,
         training: bool = True,
+        phase_prior: Optional[np.ndarray] = None,
     ) -> ACMPCAction:
-        obs = self._tensor(observation).reshape(1, OBS_DIM)
-        phase_tensor = torch.tensor([int(phase)], device=self.device, dtype=torch.long)
+        obs = self._tensor(observation).reshape(1, self.obs_dim)
+        prior_row = self._resolve_phase_prior(phase, phase_prior)
         state = self._tensor(ee_positions).reshape(1, 6)
         obj = self._tensor(object_position).reshape(1, 3)
         obj_vel = self._tensor(object_velocity).reshape(1, 3)
@@ -626,7 +755,7 @@ class OnlineActorCriticACMPC:
         previous = self._tensor(previous_velocity).reshape(1, 6)
 
         with torch.no_grad():
-            weights = self.actor(obs, phase_tensor)
+            weights = self.actor(obs, prior_row)
             mean_velocity, _ = self.mpc(
                 ee_positions=state,
                 object_positions=obj,
@@ -655,13 +784,14 @@ class OnlineActorCriticACMPC:
             value=float(value.detach().cpu().item()),
             log_prob=float(log_prob.detach().cpu().item()),
             entropy=float(entropy.detach().cpu().item()),
+            phase_prior=prior_row.detach().cpu().numpy()[0].copy(),
         )
 
     def predict_value(self, observation: np.ndarray) -> float:
         """Critic value of a single observation, for a rollout's GAE bootstrap."""
 
         with torch.no_grad():
-            obs = self._tensor(observation).reshape(1, OBS_DIM)
+            obs = self._tensor(observation).reshape(1, self.obs_dim)
             return float(self.critic(obs).detach().cpu().item())
 
     def update(
@@ -685,12 +815,16 @@ class OnlineActorCriticACMPC:
             gamma=self.config.gamma,
             gae_lambda=self.config.gae_lambda,
         )
+        # Old (pre-update) critic predictions vs. GAE returns -- the
+        # standard PPO diagnostic; no extra critic forward pass.
+        update_explained_variance = explained_variance(returns, np.asarray(rollout.values))
         if transitions > 1:
             advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
 
         batch = _MPCBatch(
             observations=self._tensor(np.stack(rollout.observations)),
             phases=torch.as_tensor(rollout.phases, dtype=torch.long, device=self.device),
+            phase_priors=self._tensor(np.stack(rollout.phase_priors)),
             ee_positions=self._tensor(np.stack(rollout.ee_positions)),
             object_positions=self._tensor(np.stack(rollout.object_positions)),
             object_velocities=self._tensor(np.stack(rollout.object_velocities)),
@@ -813,12 +947,16 @@ class OnlineActorCriticACMPC:
             entropy=float(np.mean(entropies)) if entropies else 0.0,
             approximate_kl=final_kl,
             actor_parameter_delta=actor_delta,
+            explained_variance=update_explained_variance,
         )
 
     def _distribution(
         self, mini: _MPCBatch
     ) -> tuple[torch.distributions.Normal, torch.Tensor]:
-        weights = self.actor(mini.observations, mini.phases)
+        # Replay uses the exact prior stored at collection time (mini.phase_priors),
+        # not a fresh lookup by mini.phases -- a mid-blend prior cannot be
+        # reconstructed from a bare phase index alone (see ACMPCAction.phase_prior).
+        weights = self.actor(mini.observations, mini.phase_priors)
         mean_velocity, _ = self.mpc(
             ee_positions=mini.ee_positions,
             object_positions=mini.object_positions,

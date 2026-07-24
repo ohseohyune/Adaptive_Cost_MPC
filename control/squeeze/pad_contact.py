@@ -65,11 +65,20 @@ def read_bilateral_pad_contact(
     data: mujoco.MjData,
     *,
     box_geom_name: str = "flying_box_geom",
+    left_pad_geom_name: str = "left_squeeze_pad",
+    right_pad_geom_name: str = "right_squeeze_pad",
 ) -> BilateralPadContact:
-    """Measure only left-pad/box and right-pad/box contacts."""
+    """Measure only left-pad/box and right-pad/box contacts.
+
+    ``left_pad_geom_name``/``right_pad_geom_name`` default to the shared
+    squeeze pads (box_squeeze track); pass a different pair of geom names to
+    measure a track-specific contact surface instead (e.g. AC-MPC box-catch's
+    own catch pads, positioned further out to clear the arm mesh -- see
+    left_catch_pad/right_catch_pad in ffw_sg2.xml).
+    """
 
     box = {_geom_id(model, box_geom_name)}
-    left = get_contacts_between(model, data, {_geom_id(model, "left_squeeze_pad")}, box)
-    right = get_contacts_between(model, data, {_geom_id(model, "right_squeeze_pad")}, box)
+    left = get_contacts_between(model, data, {_geom_id(model, left_pad_geom_name)}, box)
+    right = get_contacts_between(model, data, {_geom_id(model, right_pad_geom_name)}, box)
     return BilateralPadContact(left=_measurement(left), right=_measurement(right))
 

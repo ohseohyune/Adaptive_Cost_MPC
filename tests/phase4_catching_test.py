@@ -55,7 +55,7 @@ from control.clik import (
     MovingTargetPredictor,
 )
 from control.clik.catching import adaptive_stiffness, compute_catching_orientation
-from control.clik.contact import finger_geom_ids, get_contact_forces, total_normal_force
+from control.clik.contact import finger_geom_ids
 from control.clik.impedance import CartesianImpedanceConfig, CartesianImpedanceController
 from robot.ffw_config import FFW_ARMS, FFW_GRIPPERS
 
@@ -429,8 +429,8 @@ def main() -> None:
     print("=" * 70)
     print(f"SC1  Velocity prediction accuracy : |est_vz - true_vz| < {SC1_VZ_ERROR_MAX} m/s "
           f"after {SC1_OBS_TIME_S} s")
-    print(f"SC2  Intercept reachability       : plan.reachable=True at any point during fall")
-    print(f"SC3  Adaptive stiffness reduction : K(0.05s) < K_nom AND K(t_soften+ε) = K_nom")
+    print("SC2  Intercept reachability       : plan.reachable=True at any point during fall")
+    print("SC3  Adaptive stiffness reduction : K(0.05s) < K_nom AND K(t_soften+ε) = K_nom")
     print(f"SC4  Catching orientation         : valid SO(3), alignment < {SC4_ALIGN_ERROR_DEG}°")
     print(f"SC5  Catch success                : ball-finger force > {SC5_CONTACT_MIN_N} N "
           f"(self-contact excluded)")

@@ -8,6 +8,7 @@ other (they would otherwise form an import cycle).
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Optional
 
 import numpy as np
 import torch
@@ -35,6 +36,12 @@ class PPOUpdateSummary:
     entropy: float
     approximate_kl: float
     actor_parameter_delta: float
+    # 1 - Var(return - value_prediction) / Var(return), using the *old*
+    # (pre-update) critic predictions stored in the rollout against the GAE
+    # returns -- the standard PPO diagnostic, not a fresh critic forward
+    # pass. None when the caller never computes it (e.g. ppo_cost_adapter's
+    # update()); NaN when return variance is too small for a stable ratio.
+    explained_variance: Optional[float] = None
 
 
 def generalized_advantage_estimate(
@@ -62,3 +69,18 @@ def generalized_advantage_estimate(
         last_advantage = delta + gamma * gae_lambda * nonterminal * last_advantage
         advantages[index] = last_advantage
     return advantages, advantages + values
+
+
+def explained_variance(returns: np.ndarray, value_predictions: np.ndarray) -> float:
+    """1 - Var(returns - value_predictions) / Var(returns).
+
+    NaN when Var(returns) is too small for the ratio to be numerically
+    meaningful, rather than an arbitrary substitute value.
+    """
+
+    returns = np.asarray(returns, dtype=np.float64)
+    value_predictions = np.asarray(value_predictions, dtype=np.float64)
+    return_variance = float(np.var(returns))
+    if return_variance < 1e-8:
+        return float("nan")
+    return float(1.0 - np.var(returns - value_predictions) / return_variance)

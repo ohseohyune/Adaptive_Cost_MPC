@@ -149,44 +149,14 @@ class BimanualWrenchAllocator:
             hessian += self.config.wrench_rate_weight * np.eye(12)
             gradient -= self.config.wrench_rate_weight * self._previous_solution
 
-        rows: list[np.ndarray] = []
-        lower: list[float] = []
-        upper: list[float] = []
-        minimum_normal_force = min(
-            self.config.maximum_qp_normal_force,
-            1.15 * mass * float(np.linalg.norm(gravity)) / (2.0 * mu),
+        rows, lower, upper = self._build_contact_constraints(
+            inward=inward,
+            x_axis=x_axis,
+            z_axis=z_axis,
+            mu=mu,
+            mass=mass,
+            gravity=gravity,
         )
-        for index, normal in enumerate(inward):
-            base = 6 * index
-            normal_row = np.zeros(12)
-            normal_row[base : base + 3] = normal
-            rows.append(normal_row)
-            lower.append(minimum_normal_force)
-            upper.append(self.config.maximum_qp_normal_force)
-            for tangent in (x_axis, z_axis):
-                for sign in (-1.0, 1.0):
-                    row = np.zeros(12)
-                    row[base : base + 3] = sign * tangent - mu * normal
-                    rows.append(row)
-                    lower.append(-np.inf)
-                    upper.append(0.0)
-            for axis_index in range(3):
-                row = np.zeros(12)
-                row[base + 3 + axis_index] = 1.0
-                rows.append(row)
-                lower.append(-self.config.maximum_contact_moment)
-                upper.append(self.config.maximum_contact_moment)
-            # Soft-finger torsional moment capacity grows with normal force.
-            for sign in (-1.0, 1.0):
-                row = np.zeros(12)
-                row[base : base + 3] = (
-                    -self.config.torsional_friction_coefficient * normal
-                )
-                row[base + 3 : base + 6] = sign * normal
-                rows.append(row)
-                lower.append(-np.inf)
-                upper.append(0.0)
-
         try:
             import osqp
 
@@ -236,3 +206,53 @@ class BimanualWrenchAllocator:
                 * float(np.dot(angular_velocity, angular_velocity))
             ),
         )
+
+    def _build_contact_constraints(
+        self,
+        *,
+        inward: tuple[np.ndarray, np.ndarray],
+        x_axis: np.ndarray,
+        z_axis: np.ndarray,
+        mu: float,
+        mass: float,
+        gravity: np.ndarray,
+    ) -> tuple[list[np.ndarray], list[float], list[float]]:
+        """Friction cone, moment, and torsional-capacity rows for both contacts."""
+        rows: list[np.ndarray] = []
+        lower: list[float] = []
+        upper: list[float] = []
+        minimum_normal_force = min(
+            self.config.maximum_qp_normal_force,
+            1.15 * mass * float(np.linalg.norm(gravity)) / (2.0 * mu),
+        )
+        for index, normal in enumerate(inward):
+            base = 6 * index
+            normal_row = np.zeros(12)
+            normal_row[base : base + 3] = normal
+            rows.append(normal_row)
+            lower.append(minimum_normal_force)
+            upper.append(self.config.maximum_qp_normal_force)
+            for tangent in (x_axis, z_axis):
+                for sign in (-1.0, 1.0):
+                    row = np.zeros(12)
+                    row[base : base + 3] = sign * tangent - mu * normal
+                    rows.append(row)
+                    lower.append(-np.inf)
+                    upper.append(0.0)
+            for axis_index in range(3):
+                row = np.zeros(12)
+                row[base + 3 + axis_index] = 1.0
+                rows.append(row)
+                lower.append(-self.config.maximum_contact_moment)
+                upper.append(self.config.maximum_contact_moment)
+            # Soft-finger torsional moment capacity grows with normal force.
+            for sign in (-1.0, 1.0):
+                row = np.zeros(12)
+                row[base : base + 3] = (
+                    -self.config.torsional_friction_coefficient * normal
+                )
+                row[base + 3 : base + 6] = sign * normal
+                rows.append(row)
+                lower.append(-np.inf)
+                upper.append(0.0)
+        return rows, lower, upper

@@ -10,7 +10,6 @@ import time
 
 import mujoco
 import mujoco.viewer
-import numpy as np
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent
