@@ -55,6 +55,14 @@ class DynamicSideSqueezeConfig(SideSqueezeConfig):
     launch_velocity_high: tuple[float, float, float] = (-1.35, 0.010, 0.0)
     gravity: tuple[float, float, float] = (0.0, 0.0, -9.81)
     simultaneous_start: bool = True
+    # Tuned for the nominal box_half_y=0.150 (see SideSqueezeConfig.box_half_y
+    # / generalization.py's NOMINAL_BOX_HALF_SIZE[1]). __post_init__ below
+    # scales this by box_half_y/0.150 so a larger randomized box -- which
+    # needs the arms to spread to a proportionally wider target separation
+    # (pad_offset_scalar in main_acmpc_box_catch.py) -- gets proportionally
+    # more flight-time margin to reach it before the fixed
+    # interception-workspace deadline, instead of a bigger box always
+    # getting the same tight window a small box was tuned for.
     target_flight_time_s: float | None = 0.56
     derive_vertical_launch_velocity: bool = True
     target_catch_height: float = 0.800
@@ -167,6 +175,12 @@ class DynamicSideSqueezeConfig(SideSqueezeConfig):
     hold_instability_grace_s: float = 0.025
     # Includes the ballistic approach, capture transient, and five-second hold.
     timeout_s: float = 7.50
+
+    def __post_init__(self) -> None:
+        # No-op at the nominal box_half_y (ratio == 1.0) -- every existing
+        # caller that never randomizes box_half_y keeps exactly 0.56s.
+        if self.target_flight_time_s is not None:
+            self.target_flight_time_s = self.target_flight_time_s * (self.box_half_y / 0.150)
 
 
 @dataclass

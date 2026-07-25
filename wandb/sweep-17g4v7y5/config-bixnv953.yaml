@@ -1,0 +1,6 @@
+wandb_version: 1
+
+hold_grasp_weight:
+  value: 4.355180162586054
+pre_impact_velocity_weight:
+  value: 8.095273482315863

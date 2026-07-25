@@ -1,0 +1,1117 @@
+2026-07-25 17:18:34 INFO Reached EOF.
+2026-07-25 17:18:34 INFO Closing mailbox, abandoning 0 handles.
+2026-07-25 17:18:49 INFO Running runs: []
+2026-07-25 17:18:49 INFO Agent received command: run
+2026-07-25 17:18:49 INFO Agent starting run with config:
+	hold_grasp_weight: 1.0025328280033174
+	pre_impact_velocity_weight: 14.577580257368274
+2026-07-25 17:18:49 INFO About to run command: /usr/bin/env python acmpc/box_catch_sweep_train.py
+2026-07-25 17:18:55 INFO Running runs: ['ku2a3ori']
+2026-07-25 17:20:09 INFO Cleaning up finished run: ku2a3ori
+2026-07-25 17:20:09 INFO Reached EOF.
+2026-07-25 17:20:09 INFO Closing mailbox, abandoning 0 handles.
+2026-07-25 17:20:10 INFO Agent received command: run
+2026-07-25 17:20:10 INFO Agent starting run with config:
+	hold_grasp_weight: 18.687653295403106
+	pre_impact_velocity_weight: 2.766189757421109
+2026-07-25 17:20:10 INFO About to run command: /usr/bin/env python acmpc/box_catch_sweep_train.py
+2026-07-25 17:20:15 INFO Running runs: ['kiw69ouf']
+2026-07-25 17:21:24 INFO Cleaning up finished run: kiw69ouf
+2026-07-25 17:21:24 INFO Reached EOF.
+2026-07-25 17:21:24 INFO Closing mailbox, abandoning 0 handles.
+2026-07-25 17:21:25 INFO Agent received command: run
+2026-07-25 17:21:25 INFO Agent starting run with config:
+	hold_grasp_weight: 7.76191998247559
+	pre_impact_velocity_weight: 2.1272384544814935
+2026-07-25 17:21:25 INFO About to run command: /usr/bin/env python acmpc/box_catch_sweep_train.py
+2026-07-25 17:21:30 INFO Running runs: ['01v685f4']
+2026-07-25 17:22:39 INFO Cleaning up finished run: 01v685f4
+2026-07-25 17:22:39 INFO Reached EOF.
+2026-07-25 17:22:39 INFO Closing mailbox, abandoning 0 handles.
+2026-07-25 17:22:41 INFO Agent received command: run
+2026-07-25 17:22:41 INFO Agent starting run with config:
+	hold_grasp_weight: 13.414910202504302
+	pre_impact_velocity_weight: 1.8715301383532188
+2026-07-25 17:22:41 INFO About to run command: /usr/bin/env python acmpc/box_catch_sweep_train.py
+2026-07-25 17:22:46 INFO Running runs: ['tfh4rjtd']
+2026-07-25 17:23:50 INFO Cleaning up finished run: tfh4rjtd
+2026-07-25 17:23:50 INFO Reached EOF.
+2026-07-25 17:23:50 INFO Closing mailbox, abandoning 0 handles.
+2026-07-25 17:23:52 INFO Agent received command: run
+2026-07-25 17:23:52 INFO Agent starting run with config:
+	hold_grasp_weight: 0.7732649789877555
+	pre_impact_velocity_weight: 1.7035012398677756
+2026-07-25 17:23:52 INFO About to run command: /usr/bin/env python acmpc/box_catch_sweep_train.py
+2026-07-25 17:23:57 INFO Running runs: ['qkddzzak']
+2026-07-25 17:25:22 INFO Cleaning up finished run: qkddzzak
+2026-07-25 17:25:22 INFO Reached EOF.
+2026-07-25 17:25:22 INFO Closing mailbox, abandoning 0 handles.
+2026-07-25 17:25:24 INFO Agent received command: run
+2026-07-25 17:25:24 INFO Agent starting run with config:
+	hold_grasp_weight: 19.676450218235864
+	pre_impact_velocity_weight: 1.6686022140325782
+2026-07-25 17:25:24 INFO About to run command: /usr/bin/env python acmpc/box_catch_sweep_train.py
+2026-07-25 17:25:29 INFO Running runs: ['igbbymjz']
+2026-07-25 17:26:32 INFO Cleaning up finished run: igbbymjz
+2026-07-25 17:26:32 INFO Reached EOF.
+2026-07-25 17:26:32 INFO Closing mailbox, abandoning 0 handles.
+2026-07-25 17:26:34 INFO Agent received command: run
+2026-07-25 17:26:34 INFO Agent starting run with config:
+	hold_grasp_weight: 4.376426564560301
+	pre_impact_velocity_weight: 1.535887773795081
+2026-07-25 17:26:34 INFO About to run command: /usr/bin/env python acmpc/box_catch_sweep_train.py
+2026-07-25 17:26:39 INFO Running runs: ['vihz561i']
+2026-07-25 17:27:58 INFO Cleaning up finished run: vihz561i
+2026-07-25 17:27:58 INFO Reached EOF.
+2026-07-25 17:27:58 INFO Closing mailbox, abandoning 0 handles.
+2026-07-25 17:28:00 INFO Agent received command: run
+2026-07-25 17:28:00 INFO Agent starting run with config:
+	hold_grasp_weight: 10.675525140734855
+	pre_impact_velocity_weight: 1.5028210636328223
+2026-07-25 17:28:00 INFO About to run command: /usr/bin/env python acmpc/box_catch_sweep_train.py
+2026-07-25 17:28:05 INFO Running runs: ['vieu5fbu']
+2026-07-25 17:29:35 INFO Cleaning up finished run: vieu5fbu
+2026-07-25 17:29:35 INFO Reached EOF.
+2026-07-25 17:29:35 INFO Closing mailbox, abandoning 0 handles.
+2026-07-25 17:29:36 INFO Agent received command: run
+2026-07-25 17:29:36 INFO Agent starting run with config:
+	hold_grasp_weight: 16.563352227913214
+	pre_impact_velocity_weight: 1.5514359028841245
+2026-07-25 17:29:36 INFO About to run command: /usr/bin/env python acmpc/box_catch_sweep_train.py
+2026-07-25 17:29:42 INFO Running runs: ['o43ouiby']
+2026-07-25 17:30:46 INFO Cleaning up finished run: o43ouiby
+2026-07-25 17:30:46 INFO Reached EOF.
+2026-07-25 17:30:46 INFO Closing mailbox, abandoning 0 handles.
+2026-07-25 17:30:47 INFO Agent received command: run
+2026-07-25 17:30:47 INFO Agent starting run with config:
+	hold_grasp_weight: 7.512800958942418
+	pre_impact_velocity_weight: 1.5343905634726656
+2026-07-25 17:30:47 INFO About to run command: /usr/bin/env python acmpc/box_catch_sweep_train.py
+2026-07-25 17:30:52 INFO Running runs: ['kbunz0z8']
+2026-07-25 17:32:06 INFO Cleaning up finished run: kbunz0z8
+2026-07-25 17:32:06 INFO Reached EOF.
+2026-07-25 17:32:06 INFO Closing mailbox, abandoning 0 handles.
+2026-07-25 17:32:07 INFO Agent received command: run
+2026-07-25 17:32:07 INFO Agent starting run with config:
+	hold_grasp_weight: 19.780051026431725
+	pre_impact_velocity_weight: 5.336969981750628
+2026-07-25 17:32:07 INFO About to run command: /usr/bin/env python acmpc/box_catch_sweep_train.py
+2026-07-25 17:32:12 INFO Running runs: ['2kgjt8cr']
+2026-07-25 17:33:17 INFO Cleaning up finished run: 2kgjt8cr
+2026-07-25 17:33:17 INFO Reached EOF.
+2026-07-25 17:33:17 INFO Closing mailbox, abandoning 0 handles.
+2026-07-25 17:33:18 INFO Agent received command: run
+2026-07-25 17:33:18 INFO Agent starting run with config:
+	hold_grasp_weight: 19.93758090167757
+	pre_impact_velocity_weight: 3.879901863270615
+2026-07-25 17:33:18 INFO About to run command: /usr/bin/env python acmpc/box_catch_sweep_train.py
+2026-07-25 17:33:23 INFO Running runs: ['3igy9mtm']
+2026-07-25 17:34:21 INFO Cleaning up finished run: 3igy9mtm
+2026-07-25 17:34:21 INFO Reached EOF.
+2026-07-25 17:34:21 INFO Closing mailbox, abandoning 0 handles.
+2026-07-25 17:34:23 INFO Agent received command: run
+2026-07-25 17:34:23 INFO Agent starting run with config:
+	hold_grasp_weight: 15.351009690035012
+	pre_impact_velocity_weight: 3.9518660987630794
+2026-07-25 17:34:23 INFO About to run command: /usr/bin/env python acmpc/box_catch_sweep_train.py
+2026-07-25 17:34:28 INFO Running runs: ['22fgy4vk']
+2026-07-25 17:35:27 INFO Cleaning up finished run: 22fgy4vk
+2026-07-25 17:35:27 INFO Reached EOF.
+2026-07-25 17:35:27 INFO Closing mailbox, abandoning 0 handles.
+2026-07-25 17:35:29 INFO Agent received command: run
+2026-07-25 17:35:29 INFO Agent starting run with config:
+	hold_grasp_weight: 11.656962048139128
+	pre_impact_velocity_weight: 3.2195108503945726
+2026-07-25 17:35:29 INFO About to run command: /usr/bin/env python acmpc/box_catch_sweep_train.py
+2026-07-25 17:35:34 INFO Running runs: ['nsai6u2o']
+2026-07-25 17:36:42 INFO Cleaning up finished run: nsai6u2o
+2026-07-25 17:36:42 INFO Reached EOF.
+2026-07-25 17:36:42 INFO Closing mailbox, abandoning 0 handles.
+2026-07-25 17:36:44 INFO Agent received command: run
+2026-07-25 17:36:44 INFO Agent starting run with config:
+	hold_grasp_weight: 14.588882203906996
+	pre_impact_velocity_weight: 2.915072529454895
+2026-07-25 17:36:44 INFO About to run command: /usr/bin/env python acmpc/box_catch_sweep_train.py
+2026-07-25 17:36:49 INFO Running runs: ['l3lbhbxj']
+2026-07-25 17:38:03 INFO Cleaning up finished run: l3lbhbxj
+2026-07-25 17:38:03 INFO Reached EOF.
+2026-07-25 17:38:03 INFO Closing mailbox, abandoning 0 handles.
+2026-07-25 17:38:04 INFO Agent received command: run
+2026-07-25 17:38:04 INFO Agent starting run with config:
+	hold_grasp_weight: 0.1939888619625263
+	pre_impact_velocity_weight: 1.5072342599509785
+2026-07-25 17:38:04 INFO About to run command: /usr/bin/env python acmpc/box_catch_sweep_train.py
+2026-07-25 17:38:09 INFO Running runs: ['62w921sy']
+2026-07-25 17:39:24 INFO Cleaning up finished run: 62w921sy
+2026-07-25 17:39:24 INFO Reached EOF.
+2026-07-25 17:39:24 INFO Closing mailbox, abandoning 0 handles.
+2026-07-25 17:39:25 INFO Agent received command: run
+2026-07-25 17:39:25 INFO Agent starting run with config:
+	hold_grasp_weight: 1.3931167583186663
+	pre_impact_velocity_weight: 1.5183778081940953
+2026-07-25 17:39:25 INFO About to run command: /usr/bin/env python acmpc/box_catch_sweep_train.py
+2026-07-25 17:39:30 INFO Running runs: ['7tspeooj']
+2026-07-25 17:41:00 INFO Cleaning up finished run: 7tspeooj
+2026-07-25 17:41:00 INFO Reached EOF.
+2026-07-25 17:41:00 INFO Closing mailbox, abandoning 0 handles.
+2026-07-25 17:41:02 INFO Agent received command: run
+2026-07-25 17:41:02 INFO Agent starting run with config:
+	hold_grasp_weight: 17.67775585786137
+	pre_impact_velocity_weight: 4.297234423618376
+2026-07-25 17:41:02 INFO About to run command: /usr/bin/env python acmpc/box_catch_sweep_train.py
+2026-07-25 17:41:07 INFO Running runs: ['9gngvitf']
+2026-07-25 17:42:32 INFO Cleaning up finished run: 9gngvitf
+2026-07-25 17:42:32 INFO Reached EOF.
+2026-07-25 17:42:32 INFO Closing mailbox, abandoning 0 handles.
+2026-07-25 17:42:33 INFO Agent received command: run
+2026-07-25 17:42:33 INFO Agent starting run with config:
+	hold_grasp_weight: 10.653607276530588
+	pre_impact_velocity_weight: 2.5031936343145764
+2026-07-25 17:42:33 INFO About to run command: /usr/bin/env python acmpc/box_catch_sweep_train.py
+2026-07-25 17:42:38 INFO Running runs: ['p5lf6n0o']
+2026-07-25 17:44:03 INFO Cleaning up finished run: p5lf6n0o
+2026-07-25 17:44:03 INFO Reached EOF.
+2026-07-25 17:44:03 INFO Closing mailbox, abandoning 0 handles.
+2026-07-25 17:44:04 INFO Agent received command: run
+2026-07-25 17:44:04 INFO Agent starting run with config:
+	hold_grasp_weight: 16.937561939842784
+	pre_impact_velocity_weight: 3.5459557816373293
+2026-07-25 17:44:04 INFO About to run command: /usr/bin/env python acmpc/box_catch_sweep_train.py
+2026-07-25 17:44:09 INFO Running runs: ['cxjaqmr2']
+2026-07-25 17:45:24 INFO Cleaning up finished run: cxjaqmr2
+2026-07-25 17:45:24 INFO Reached EOF.
+2026-07-25 17:45:24 INFO Closing mailbox, abandoning 0 handles.
+2026-07-25 18:06:17 INFO Reached EOF.
+2026-07-25 18:06:17 INFO Closing mailbox, abandoning 0 handles.
+2026-07-25 18:06:30 INFO Running runs: []
+2026-07-25 18:06:31 INFO Agent received command: run
+2026-07-25 18:06:31 INFO Agent starting run with config:
+	pre_impact_velocity_weight: 8
+2026-07-25 18:06:31 INFO About to run command: /usr/bin/env python acmpc/box_catch_sweep_train.py
+2026-07-25 18:06:36 INFO Running runs: ['309o1qz0']
+2026-07-25 18:08:06 INFO Cleaning up finished run: 309o1qz0
+2026-07-25 18:08:06 INFO Reached EOF.
+2026-07-25 18:08:06 INFO Closing mailbox, abandoning 0 handles.
+2026-07-25 18:08:07 INFO Agent received command: run
+2026-07-25 18:08:07 INFO Agent starting run with config:
+	pre_impact_velocity_weight: 8.5
+2026-07-25 18:08:07 INFO About to run command: /usr/bin/env python acmpc/box_catch_sweep_train.py
+2026-07-25 18:08:12 INFO Running runs: ['0xiu2jou']
+2026-07-25 18:09:42 INFO Cleaning up finished run: 0xiu2jou
+2026-07-25 18:09:42 INFO Reached EOF.
+2026-07-25 18:09:42 INFO Closing mailbox, abandoning 0 handles.
+2026-07-25 18:09:43 INFO Agent received command: run
+2026-07-25 18:09:43 INFO Agent starting run with config:
+	pre_impact_velocity_weight: 9
+2026-07-25 18:09:43 INFO About to run command: /usr/bin/env python acmpc/box_catch_sweep_train.py
+2026-07-25 18:09:48 INFO Running runs: ['wfxzs91d']
+2026-07-25 18:11:20 ERROR Error communicating with W&B.
+Traceback (most recent call last):
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/sdk/internal/internal_api.py", line 2561, in agent_heartbeat
+    response = self.execute(
+        mutation,
+    ...<5 lines>...
+        timeout=60,
+    )
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/sdk/internal/internal_api.py", line 324, in execute
+    return self._service_api.execute_graphql(*args, **kwargs)  # type: ignore[return-value]
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/apis/public/service_api.py", line 158, in execute_graphql
+    response = self.send_api_request(
+        request,
+        timeout=timeout if timeout is not None else self._timeout,
+    )
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/apis/public/service_api.py", line 80, in send_api_request
+    return session.connection.api_request(request, timeout=timeout)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/sdk/lib/service/service_connection.py", line 252, in api_request
+    raise WandbApiFailedError(
+    ...<2 lines>...
+    ) from None
+wandb.sdk.lib.service.service_connection.WandbApiFailedError: Failed to execute API request: the service process is busy and did not respond in time.
+2026-07-25 18:12:25 ERROR Error communicating with W&B.
+Traceback (most recent call last):
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/sdk/internal/internal_api.py", line 2561, in agent_heartbeat
+    response = self.execute(
+        mutation,
+    ...<5 lines>...
+        timeout=60,
+    )
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/sdk/internal/internal_api.py", line 324, in execute
+    return self._service_api.execute_graphql(*args, **kwargs)  # type: ignore[return-value]
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/apis/public/service_api.py", line 158, in execute_graphql
+    response = self.send_api_request(
+        request,
+        timeout=timeout if timeout is not None else self._timeout,
+    )
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/apis/public/service_api.py", line 80, in send_api_request
+    return session.connection.api_request(request, timeout=timeout)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/sdk/lib/service/service_connection.py", line 252, in api_request
+    raise WandbApiFailedError(
+    ...<2 lines>...
+    ) from None
+wandb.sdk.lib.service.service_connection.WandbApiFailedError: Failed to execute API request: the service process is busy and did not respond in time.
+2026-07-25 18:13:30 ERROR Error communicating with W&B.
+Traceback (most recent call last):
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/sdk/internal/internal_api.py", line 2561, in agent_heartbeat
+    response = self.execute(
+        mutation,
+    ...<5 lines>...
+        timeout=60,
+    )
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/sdk/internal/internal_api.py", line 324, in execute
+    return self._service_api.execute_graphql(*args, **kwargs)  # type: ignore[return-value]
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/apis/public/service_api.py", line 158, in execute_graphql
+    response = self.send_api_request(
+        request,
+        timeout=timeout if timeout is not None else self._timeout,
+    )
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/apis/public/service_api.py", line 80, in send_api_request
+    return session.connection.api_request(request, timeout=timeout)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/sdk/lib/service/service_connection.py", line 252, in api_request
+    raise WandbApiFailedError(
+    ...<2 lines>...
+    ) from None
+wandb.sdk.lib.service.service_connection.WandbApiFailedError: Failed to execute API request: the service process is busy and did not respond in time.
+2026-07-25 18:14:35 ERROR Error communicating with W&B.
+Traceback (most recent call last):
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/sdk/internal/internal_api.py", line 2561, in agent_heartbeat
+    response = self.execute(
+        mutation,
+    ...<5 lines>...
+        timeout=60,
+    )
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/sdk/internal/internal_api.py", line 324, in execute
+    return self._service_api.execute_graphql(*args, **kwargs)  # type: ignore[return-value]
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/apis/public/service_api.py", line 158, in execute_graphql
+    response = self.send_api_request(
+        request,
+        timeout=timeout if timeout is not None else self._timeout,
+    )
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/apis/public/service_api.py", line 80, in send_api_request
+    return session.connection.api_request(request, timeout=timeout)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/sdk/lib/service/service_connection.py", line 252, in api_request
+    raise WandbApiFailedError(
+    ...<2 lines>...
+    ) from None
+wandb.sdk.lib.service.service_connection.WandbApiFailedError: Failed to execute API request: the service process is busy and did not respond in time.
+2026-07-25 18:15:40 ERROR Error communicating with W&B.
+Traceback (most recent call last):
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/sdk/internal/internal_api.py", line 2561, in agent_heartbeat
+    response = self.execute(
+        mutation,
+    ...<5 lines>...
+        timeout=60,
+    )
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/sdk/internal/internal_api.py", line 324, in execute
+    return self._service_api.execute_graphql(*args, **kwargs)  # type: ignore[return-value]
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/apis/public/service_api.py", line 158, in execute_graphql
+    response = self.send_api_request(
+        request,
+        timeout=timeout if timeout is not None else self._timeout,
+    )
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/apis/public/service_api.py", line 80, in send_api_request
+    return session.connection.api_request(request, timeout=timeout)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/sdk/lib/service/service_connection.py", line 252, in api_request
+    raise WandbApiFailedError(
+    ...<2 lines>...
+    ) from None
+wandb.sdk.lib.service.service_connection.WandbApiFailedError: Failed to execute API request: the service process is busy and did not respond in time.
+2026-07-25 18:16:45 ERROR Error communicating with W&B.
+Traceback (most recent call last):
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/sdk/internal/internal_api.py", line 2561, in agent_heartbeat
+    response = self.execute(
+        mutation,
+    ...<5 lines>...
+        timeout=60,
+    )
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/sdk/internal/internal_api.py", line 324, in execute
+    return self._service_api.execute_graphql(*args, **kwargs)  # type: ignore[return-value]
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/apis/public/service_api.py", line 158, in execute_graphql
+    response = self.send_api_request(
+        request,
+        timeout=timeout if timeout is not None else self._timeout,
+    )
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/apis/public/service_api.py", line 80, in send_api_request
+    return session.connection.api_request(request, timeout=timeout)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/sdk/lib/service/service_connection.py", line 252, in api_request
+    raise WandbApiFailedError(
+    ...<2 lines>...
+    ) from None
+wandb.sdk.lib.service.service_connection.WandbApiFailedError: Failed to execute API request: the service process is busy and did not respond in time.
+2026-07-25 18:17:51 ERROR Error communicating with W&B.
+Traceback (most recent call last):
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/sdk/internal/internal_api.py", line 2561, in agent_heartbeat
+    response = self.execute(
+        mutation,
+    ...<5 lines>...
+        timeout=60,
+    )
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/sdk/internal/internal_api.py", line 324, in execute
+    return self._service_api.execute_graphql(*args, **kwargs)  # type: ignore[return-value]
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/apis/public/service_api.py", line 158, in execute_graphql
+    response = self.send_api_request(
+        request,
+        timeout=timeout if timeout is not None else self._timeout,
+    )
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/apis/public/service_api.py", line 80, in send_api_request
+    return session.connection.api_request(request, timeout=timeout)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/sdk/lib/service/service_connection.py", line 252, in api_request
+    raise WandbApiFailedError(
+    ...<2 lines>...
+    ) from None
+wandb.sdk.lib.service.service_connection.WandbApiFailedError: Failed to execute API request: the service process is busy and did not respond in time.
+2026-07-25 18:18:56 ERROR Error communicating with W&B.
+Traceback (most recent call last):
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/sdk/internal/internal_api.py", line 2561, in agent_heartbeat
+    response = self.execute(
+        mutation,
+    ...<5 lines>...
+        timeout=60,
+    )
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/sdk/internal/internal_api.py", line 324, in execute
+    return self._service_api.execute_graphql(*args, **kwargs)  # type: ignore[return-value]
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/apis/public/service_api.py", line 158, in execute_graphql
+    response = self.send_api_request(
+        request,
+        timeout=timeout if timeout is not None else self._timeout,
+    )
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/apis/public/service_api.py", line 80, in send_api_request
+    return session.connection.api_request(request, timeout=timeout)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/sdk/lib/service/service_connection.py", line 252, in api_request
+    raise WandbApiFailedError(
+    ...<2 lines>...
+    ) from None
+wandb.sdk.lib.service.service_connection.WandbApiFailedError: Failed to execute API request: the service process is busy and did not respond in time.
+2026-07-25 18:20:01 ERROR Error communicating with W&B.
+Traceback (most recent call last):
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/sdk/internal/internal_api.py", line 2561, in agent_heartbeat
+    response = self.execute(
+        mutation,
+    ...<5 lines>...
+        timeout=60,
+    )
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/sdk/internal/internal_api.py", line 324, in execute
+    return self._service_api.execute_graphql(*args, **kwargs)  # type: ignore[return-value]
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/apis/public/service_api.py", line 158, in execute_graphql
+    response = self.send_api_request(
+        request,
+        timeout=timeout if timeout is not None else self._timeout,
+    )
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/apis/public/service_api.py", line 80, in send_api_request
+    return session.connection.api_request(request, timeout=timeout)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/sdk/lib/service/service_connection.py", line 252, in api_request
+    raise WandbApiFailedError(
+    ...<2 lines>...
+    ) from None
+wandb.sdk.lib.service.service_connection.WandbApiFailedError: Failed to execute API request: the service process is busy and did not respond in time.
+2026-07-25 18:21:06 ERROR Error communicating with W&B.
+Traceback (most recent call last):
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/sdk/internal/internal_api.py", line 2561, in agent_heartbeat
+    response = self.execute(
+        mutation,
+    ...<5 lines>...
+        timeout=60,
+    )
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/sdk/internal/internal_api.py", line 324, in execute
+    return self._service_api.execute_graphql(*args, **kwargs)  # type: ignore[return-value]
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/apis/public/service_api.py", line 158, in execute_graphql
+    response = self.send_api_request(
+        request,
+        timeout=timeout if timeout is not None else self._timeout,
+    )
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/apis/public/service_api.py", line 80, in send_api_request
+    return session.connection.api_request(request, timeout=timeout)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/sdk/lib/service/service_connection.py", line 252, in api_request
+    raise WandbApiFailedError(
+    ...<2 lines>...
+    ) from None
+wandb.sdk.lib.service.service_connection.WandbApiFailedError: Failed to execute API request: the service process is busy and did not respond in time.
+2026-07-25 18:22:11 ERROR Error communicating with W&B.
+Traceback (most recent call last):
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/sdk/internal/internal_api.py", line 2561, in agent_heartbeat
+    response = self.execute(
+        mutation,
+    ...<5 lines>...
+        timeout=60,
+    )
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/sdk/internal/internal_api.py", line 324, in execute
+    return self._service_api.execute_graphql(*args, **kwargs)  # type: ignore[return-value]
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/apis/public/service_api.py", line 158, in execute_graphql
+    response = self.send_api_request(
+        request,
+        timeout=timeout if timeout is not None else self._timeout,
+    )
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/apis/public/service_api.py", line 80, in send_api_request
+    return session.connection.api_request(request, timeout=timeout)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/sdk/lib/service/service_connection.py", line 252, in api_request
+    raise WandbApiFailedError(
+    ...<2 lines>...
+    ) from None
+wandb.sdk.lib.service.service_connection.WandbApiFailedError: Failed to execute API request: the service process is busy and did not respond in time.
+2026-07-25 18:23:16 ERROR Error communicating with W&B.
+Traceback (most recent call last):
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/sdk/internal/internal_api.py", line 2561, in agent_heartbeat
+    response = self.execute(
+        mutation,
+    ...<5 lines>...
+        timeout=60,
+    )
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/sdk/internal/internal_api.py", line 324, in execute
+    return self._service_api.execute_graphql(*args, **kwargs)  # type: ignore[return-value]
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/apis/public/service_api.py", line 158, in execute_graphql
+    response = self.send_api_request(
+        request,
+        timeout=timeout if timeout is not None else self._timeout,
+    )
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/apis/public/service_api.py", line 80, in send_api_request
+    return session.connection.api_request(request, timeout=timeout)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/sdk/lib/service/service_connection.py", line 252, in api_request
+    raise WandbApiFailedError(
+    ...<2 lines>...
+    ) from None
+wandb.sdk.lib.service.service_connection.WandbApiFailedError: Failed to execute API request: the service process is busy and did not respond in time.
+2026-07-25 18:24:21 ERROR Error communicating with W&B.
+Traceback (most recent call last):
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/sdk/internal/internal_api.py", line 2561, in agent_heartbeat
+    response = self.execute(
+        mutation,
+    ...<5 lines>...
+        timeout=60,
+    )
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/sdk/internal/internal_api.py", line 324, in execute
+    return self._service_api.execute_graphql(*args, **kwargs)  # type: ignore[return-value]
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/apis/public/service_api.py", line 158, in execute_graphql
+    response = self.send_api_request(
+        request,
+        timeout=timeout if timeout is not None else self._timeout,
+    )
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/apis/public/service_api.py", line 80, in send_api_request
+    return session.connection.api_request(request, timeout=timeout)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/sdk/lib/service/service_connection.py", line 252, in api_request
+    raise WandbApiFailedError(
+    ...<2 lines>...
+    ) from None
+wandb.sdk.lib.service.service_connection.WandbApiFailedError: Failed to execute API request: the service process is busy and did not respond in time.
+2026-07-25 18:25:26 ERROR Error communicating with W&B.
+Traceback (most recent call last):
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/sdk/internal/internal_api.py", line 2561, in agent_heartbeat
+    response = self.execute(
+        mutation,
+    ...<5 lines>...
+        timeout=60,
+    )
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/sdk/internal/internal_api.py", line 324, in execute
+    return self._service_api.execute_graphql(*args, **kwargs)  # type: ignore[return-value]
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/apis/public/service_api.py", line 158, in execute_graphql
+    response = self.send_api_request(
+        request,
+        timeout=timeout if timeout is not None else self._timeout,
+    )
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/apis/public/service_api.py", line 80, in send_api_request
+    return session.connection.api_request(request, timeout=timeout)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/sdk/lib/service/service_connection.py", line 252, in api_request
+    raise WandbApiFailedError(
+    ...<2 lines>...
+    ) from None
+wandb.sdk.lib.service.service_connection.WandbApiFailedError: Failed to execute API request: the service process is busy and did not respond in time.
+2026-07-25 18:26:31 ERROR Error communicating with W&B.
+Traceback (most recent call last):
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/sdk/internal/internal_api.py", line 2561, in agent_heartbeat
+    response = self.execute(
+        mutation,
+    ...<5 lines>...
+        timeout=60,
+    )
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/sdk/internal/internal_api.py", line 324, in execute
+    return self._service_api.execute_graphql(*args, **kwargs)  # type: ignore[return-value]
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/apis/public/service_api.py", line 158, in execute_graphql
+    response = self.send_api_request(
+        request,
+        timeout=timeout if timeout is not None else self._timeout,
+    )
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/apis/public/service_api.py", line 80, in send_api_request
+    return session.connection.api_request(request, timeout=timeout)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/sdk/lib/service/service_connection.py", line 252, in api_request
+    raise WandbApiFailedError(
+    ...<2 lines>...
+    ) from None
+wandb.sdk.lib.service.service_connection.WandbApiFailedError: Failed to execute API request: the service process is busy and did not respond in time.
+2026-07-25 18:26:36 INFO Cleaning up finished run: wfxzs91d
+2026-07-25 18:26:36 INFO Reached EOF.
+2026-07-25 18:26:36 INFO Closing mailbox, abandoning 0 handles.
+2026-07-25 18:26:37 INFO Agent received command: run
+2026-07-25 18:26:37 INFO Agent starting run with config:
+	pre_impact_velocity_weight: 9.5
+2026-07-25 18:26:37 INFO About to run command: /usr/bin/env python acmpc/box_catch_sweep_train.py
+2026-07-25 18:26:42 INFO Running runs: ['rb5b0tev']
+2026-07-25 18:28:13 INFO Cleaning up finished run: rb5b0tev
+2026-07-25 18:28:13 INFO Reached EOF.
+2026-07-25 18:28:13 INFO Closing mailbox, abandoning 0 handles.
+2026-07-25 18:28:14 INFO Agent received command: run
+2026-07-25 18:28:14 INFO Agent starting run with config:
+	pre_impact_velocity_weight: 10
+2026-07-25 18:28:14 INFO About to run command: /usr/bin/env python acmpc/box_catch_sweep_train.py
+2026-07-25 18:28:19 INFO Running runs: ['wyaih09h']
+2026-07-25 18:29:55 INFO Cleaning up finished run: wyaih09h
+2026-07-25 18:29:55 INFO Reached EOF.
+2026-07-25 18:29:55 INFO Closing mailbox, abandoning 0 handles.
+2026-07-25 18:29:56 INFO Agent received command: run
+2026-07-25 18:29:56 INFO Agent starting run with config:
+	pre_impact_velocity_weight: 10.5
+2026-07-25 18:29:56 INFO About to run command: /usr/bin/env python acmpc/box_catch_sweep_train.py
+2026-07-25 18:30:01 INFO Running runs: ['zavklcvv']
+2026-07-25 18:31:16 INFO Cleaning up finished run: zavklcvv
+2026-07-25 18:31:16 INFO Reached EOF.
+2026-07-25 18:31:16 INFO Closing mailbox, abandoning 0 handles.
+2026-07-25 18:31:17 INFO Agent received command: run
+2026-07-25 18:31:17 INFO Agent starting run with config:
+	pre_impact_velocity_weight: 11
+2026-07-25 18:31:17 INFO About to run command: /usr/bin/env python acmpc/box_catch_sweep_train.py
+2026-07-25 18:31:22 INFO Running runs: ['6pikcbrf']
+2026-07-25 18:32:36 INFO Cleaning up finished run: 6pikcbrf
+2026-07-25 18:32:36 INFO Reached EOF.
+2026-07-25 18:32:36 INFO Closing mailbox, abandoning 0 handles.
+2026-07-25 18:32:37 INFO Agent received command: run
+2026-07-25 18:32:37 INFO Agent starting run with config:
+	pre_impact_velocity_weight: 11.5
+2026-07-25 18:32:37 INFO About to run command: /usr/bin/env python acmpc/box_catch_sweep_train.py
+2026-07-25 18:32:42 INFO Running runs: ['eb9wa791']
+2026-07-25 18:34:07 INFO Cleaning up finished run: eb9wa791
+2026-07-25 18:34:07 INFO Reached EOF.
+2026-07-25 18:34:07 INFO Closing mailbox, abandoning 0 handles.
+2026-07-25 18:34:08 INFO Agent received command: run
+2026-07-25 18:34:08 INFO Agent starting run with config:
+	pre_impact_velocity_weight: 12
+2026-07-25 18:34:08 INFO About to run command: /usr/bin/env python acmpc/box_catch_sweep_train.py
+2026-07-25 18:34:13 INFO Running runs: ['xz0n7v5t']
+2026-07-25 18:35:23 INFO Cleaning up finished run: xz0n7v5t
+2026-07-25 18:35:23 INFO Reached EOF.
+2026-07-25 18:35:23 INFO Closing mailbox, abandoning 0 handles.
+2026-07-25 18:35:24 INFO Agent received command: run
+2026-07-25 18:35:24 INFO Agent starting run with config:
+	pre_impact_velocity_weight: 12.5
+2026-07-25 18:35:24 INFO About to run command: /usr/bin/env python acmpc/box_catch_sweep_train.py
+2026-07-25 18:35:29 INFO Running runs: ['cvk167o6']
+2026-07-25 18:36:55 INFO Cleaning up finished run: cvk167o6
+2026-07-25 18:36:55 INFO Reached EOF.
+2026-07-25 18:36:55 INFO Closing mailbox, abandoning 0 handles.
+2026-07-25 18:36:56 INFO Agent received command: run
+2026-07-25 18:36:56 INFO Agent starting run with config:
+	pre_impact_velocity_weight: 13
+2026-07-25 18:36:56 INFO About to run command: /usr/bin/env python acmpc/box_catch_sweep_train.py
+2026-07-25 18:37:01 INFO Running runs: ['ly1mn1jx']
+2026-07-25 18:38:23 INFO Cleaning up finished run: ly1mn1jx
+2026-07-25 18:38:23 INFO Reached EOF.
+2026-07-25 18:38:23 INFO Closing mailbox, abandoning 0 handles.
+2026-07-25 18:38:24 INFO Agent received command: run
+2026-07-25 18:38:24 INFO Agent starting run with config:
+	pre_impact_velocity_weight: 13.5
+2026-07-25 18:38:24 INFO About to run command: /usr/bin/env python acmpc/box_catch_sweep_train.py
+2026-07-25 18:38:29 INFO Running runs: ['70y5xqr1']
+2026-07-25 18:39:38 INFO Cleaning up finished run: 70y5xqr1
+2026-07-25 18:39:38 INFO Reached EOF.
+2026-07-25 18:39:38 INFO Closing mailbox, abandoning 0 handles.
+2026-07-25 18:39:39 INFO Agent received command: run
+2026-07-25 18:39:39 INFO Agent starting run with config:
+	pre_impact_velocity_weight: 14
+2026-07-25 18:39:39 INFO About to run command: /usr/bin/env python acmpc/box_catch_sweep_train.py
+2026-07-25 18:39:44 INFO Running runs: ['ntco2ufz']
+2026-07-25 18:40:54 INFO Cleaning up finished run: ntco2ufz
+2026-07-25 18:40:54 INFO Reached EOF.
+2026-07-25 18:40:54 INFO Closing mailbox, abandoning 0 handles.
+2026-07-25 18:42:39 INFO Reached EOF.
+2026-07-25 18:42:39 INFO Closing mailbox, abandoning 0 handles.
+2026-07-25 18:42:57 INFO Running runs: []
+2026-07-25 18:42:57 INFO Agent received command: run
+2026-07-25 18:42:57 INFO Agent starting run with config:
+	pre_impact_velocity_weight: 8
+2026-07-25 18:42:57 INFO About to run command: /usr/bin/env python acmpc/box_catch_sweep_train.py
+2026-07-25 18:43:02 INFO Running runs: ['0r2pkptb']
+2026-07-25 18:44:23 INFO Cleaning up finished run: 0r2pkptb
+2026-07-25 18:44:23 INFO Reached EOF.
+2026-07-25 18:44:23 INFO Closing mailbox, abandoning 0 handles.
+2026-07-25 18:44:24 INFO Agent received command: run
+2026-07-25 18:44:24 INFO Agent starting run with config:
+	pre_impact_velocity_weight: 8.5
+2026-07-25 18:44:24 INFO About to run command: /usr/bin/env python acmpc/box_catch_sweep_train.py
+2026-07-25 18:44:29 INFO Running runs: ['hp2saxii']
+2026-07-25 18:45:59 INFO Cleaning up finished run: hp2saxii
+2026-07-25 18:45:59 INFO Reached EOF.
+2026-07-25 18:45:59 INFO Closing mailbox, abandoning 0 handles.
+2026-07-25 18:46:00 INFO Agent received command: run
+2026-07-25 18:46:00 INFO Agent starting run with config:
+	pre_impact_velocity_weight: 9
+2026-07-25 18:46:00 INFO About to run command: /usr/bin/env python acmpc/box_catch_sweep_train.py
+2026-07-25 18:46:05 INFO Running runs: ['n96vgthh']
+2026-07-25 18:47:15 INFO Cleaning up finished run: n96vgthh
+2026-07-25 18:47:15 INFO Reached EOF.
+2026-07-25 18:47:15 INFO Closing mailbox, abandoning 0 handles.
+2026-07-25 18:47:16 INFO Agent received command: run
+2026-07-25 18:47:16 INFO Agent starting run with config:
+	pre_impact_velocity_weight: 9.5
+2026-07-25 18:47:16 INFO About to run command: /usr/bin/env python acmpc/box_catch_sweep_train.py
+2026-07-25 18:47:21 INFO Running runs: ['xhbcwkct']
+2026-07-25 18:48:41 INFO Cleaning up finished run: xhbcwkct
+2026-07-25 18:48:41 INFO Reached EOF.
+2026-07-25 18:48:41 INFO Closing mailbox, abandoning 0 handles.
+2026-07-25 18:48:42 INFO Agent received command: run
+2026-07-25 18:48:42 INFO Agent starting run with config:
+	pre_impact_velocity_weight: 10
+2026-07-25 18:48:42 INFO About to run command: /usr/bin/env python acmpc/box_catch_sweep_train.py
+2026-07-25 18:48:47 INFO Running runs: ['xgtzf913']
+2026-07-25 18:50:07 INFO Cleaning up finished run: xgtzf913
+2026-07-25 18:50:07 INFO Reached EOF.
+2026-07-25 18:50:07 INFO Closing mailbox, abandoning 0 handles.
+2026-07-25 18:50:08 INFO Agent received command: run
+2026-07-25 18:50:08 INFO Agent starting run with config:
+	pre_impact_velocity_weight: 10.5
+2026-07-25 18:50:08 INFO About to run command: /usr/bin/env python acmpc/box_catch_sweep_train.py
+2026-07-25 18:50:13 INFO Running runs: ['1oxt2nmk']
+2026-07-25 18:52:00 INFO Cleaning up finished run: 1oxt2nmk
+2026-07-25 18:52:00 INFO Reached EOF.
+2026-07-25 18:52:00 INFO Closing mailbox, abandoning 0 handles.
+2026-07-25 18:52:01 INFO Agent received command: run
+2026-07-25 18:52:01 INFO Agent starting run with config:
+	pre_impact_velocity_weight: 11
+2026-07-25 18:52:01 INFO About to run command: /usr/bin/env python acmpc/box_catch_sweep_train.py
+2026-07-25 18:52:06 INFO Running runs: ['u8vkq2t7']
+2026-07-25 18:54:04 ERROR Error communicating with W&B.
+Traceback (most recent call last):
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/sdk/internal/internal_api.py", line 2561, in agent_heartbeat
+    response = self.execute(
+        mutation,
+    ...<5 lines>...
+        timeout=60,
+    )
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/sdk/internal/internal_api.py", line 324, in execute
+    return self._service_api.execute_graphql(*args, **kwargs)  # type: ignore[return-value]
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/apis/public/service_api.py", line 158, in execute_graphql
+    response = self.send_api_request(
+        request,
+        timeout=timeout if timeout is not None else self._timeout,
+    )
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/apis/public/service_api.py", line 80, in send_api_request
+    return session.connection.api_request(request, timeout=timeout)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/sdk/lib/service/service_connection.py", line 252, in api_request
+    raise WandbApiFailedError(
+    ...<2 lines>...
+    ) from None
+wandb.sdk.lib.service.service_connection.WandbApiFailedError: Failed to execute API request: the service process is busy and did not respond in time.
+2026-07-25 18:55:09 ERROR Error communicating with W&B.
+Traceback (most recent call last):
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/sdk/internal/internal_api.py", line 2561, in agent_heartbeat
+    response = self.execute(
+        mutation,
+    ...<5 lines>...
+        timeout=60,
+    )
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/sdk/internal/internal_api.py", line 324, in execute
+    return self._service_api.execute_graphql(*args, **kwargs)  # type: ignore[return-value]
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/apis/public/service_api.py", line 158, in execute_graphql
+    response = self.send_api_request(
+        request,
+        timeout=timeout if timeout is not None else self._timeout,
+    )
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/apis/public/service_api.py", line 80, in send_api_request
+    return session.connection.api_request(request, timeout=timeout)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/sdk/lib/service/service_connection.py", line 252, in api_request
+    raise WandbApiFailedError(
+    ...<2 lines>...
+    ) from None
+wandb.sdk.lib.service.service_connection.WandbApiFailedError: Failed to execute API request: the service process is busy and did not respond in time.
+2026-07-25 18:56:15 ERROR Error communicating with W&B.
+Traceback (most recent call last):
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/sdk/internal/internal_api.py", line 2561, in agent_heartbeat
+    response = self.execute(
+        mutation,
+    ...<5 lines>...
+        timeout=60,
+    )
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/sdk/internal/internal_api.py", line 324, in execute
+    return self._service_api.execute_graphql(*args, **kwargs)  # type: ignore[return-value]
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/apis/public/service_api.py", line 158, in execute_graphql
+    response = self.send_api_request(
+        request,
+        timeout=timeout if timeout is not None else self._timeout,
+    )
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/apis/public/service_api.py", line 80, in send_api_request
+    return session.connection.api_request(request, timeout=timeout)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/sdk/lib/service/service_connection.py", line 252, in api_request
+    raise WandbApiFailedError(
+    ...<2 lines>...
+    ) from None
+wandb.sdk.lib.service.service_connection.WandbApiFailedError: Failed to execute API request: the service process is busy and did not respond in time.
+2026-07-25 18:57:20 ERROR Error communicating with W&B.
+Traceback (most recent call last):
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/sdk/internal/internal_api.py", line 2561, in agent_heartbeat
+    response = self.execute(
+        mutation,
+    ...<5 lines>...
+        timeout=60,
+    )
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/sdk/internal/internal_api.py", line 324, in execute
+    return self._service_api.execute_graphql(*args, **kwargs)  # type: ignore[return-value]
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/apis/public/service_api.py", line 158, in execute_graphql
+    response = self.send_api_request(
+        request,
+        timeout=timeout if timeout is not None else self._timeout,
+    )
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/apis/public/service_api.py", line 80, in send_api_request
+    return session.connection.api_request(request, timeout=timeout)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/sdk/lib/service/service_connection.py", line 252, in api_request
+    raise WandbApiFailedError(
+    ...<2 lines>...
+    ) from None
+wandb.sdk.lib.service.service_connection.WandbApiFailedError: Failed to execute API request: the service process is busy and did not respond in time.
+2026-07-25 18:58:25 ERROR Error communicating with W&B.
+Traceback (most recent call last):
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/sdk/internal/internal_api.py", line 2561, in agent_heartbeat
+    response = self.execute(
+        mutation,
+    ...<5 lines>...
+        timeout=60,
+    )
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/sdk/internal/internal_api.py", line 324, in execute
+    return self._service_api.execute_graphql(*args, **kwargs)  # type: ignore[return-value]
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/apis/public/service_api.py", line 158, in execute_graphql
+    response = self.send_api_request(
+        request,
+        timeout=timeout if timeout is not None else self._timeout,
+    )
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/apis/public/service_api.py", line 80, in send_api_request
+    return session.connection.api_request(request, timeout=timeout)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/sdk/lib/service/service_connection.py", line 252, in api_request
+    raise WandbApiFailedError(
+    ...<2 lines>...
+    ) from None
+wandb.sdk.lib.service.service_connection.WandbApiFailedError: Failed to execute API request: the service process is busy and did not respond in time.
+2026-07-25 18:59:30 ERROR Error communicating with W&B.
+Traceback (most recent call last):
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/sdk/internal/internal_api.py", line 2561, in agent_heartbeat
+    response = self.execute(
+        mutation,
+    ...<5 lines>...
+        timeout=60,
+    )
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/sdk/internal/internal_api.py", line 324, in execute
+    return self._service_api.execute_graphql(*args, **kwargs)  # type: ignore[return-value]
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/apis/public/service_api.py", line 158, in execute_graphql
+    response = self.send_api_request(
+        request,
+        timeout=timeout if timeout is not None else self._timeout,
+    )
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/apis/public/service_api.py", line 80, in send_api_request
+    return session.connection.api_request(request, timeout=timeout)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/sdk/lib/service/service_connection.py", line 252, in api_request
+    raise WandbApiFailedError(
+    ...<2 lines>...
+    ) from None
+wandb.sdk.lib.service.service_connection.WandbApiFailedError: Failed to execute API request: the service process is busy and did not respond in time.
+2026-07-25 19:00:35 ERROR Error communicating with W&B.
+Traceback (most recent call last):
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/sdk/internal/internal_api.py", line 2561, in agent_heartbeat
+    response = self.execute(
+        mutation,
+    ...<5 lines>...
+        timeout=60,
+    )
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/sdk/internal/internal_api.py", line 324, in execute
+    return self._service_api.execute_graphql(*args, **kwargs)  # type: ignore[return-value]
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/apis/public/service_api.py", line 158, in execute_graphql
+    response = self.send_api_request(
+        request,
+        timeout=timeout if timeout is not None else self._timeout,
+    )
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/apis/public/service_api.py", line 80, in send_api_request
+    return session.connection.api_request(request, timeout=timeout)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/sdk/lib/service/service_connection.py", line 252, in api_request
+    raise WandbApiFailedError(
+    ...<2 lines>...
+    ) from None
+wandb.sdk.lib.service.service_connection.WandbApiFailedError: Failed to execute API request: the service process is busy and did not respond in time.
+2026-07-25 19:01:40 ERROR Error communicating with W&B.
+Traceback (most recent call last):
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/sdk/internal/internal_api.py", line 2561, in agent_heartbeat
+    response = self.execute(
+        mutation,
+    ...<5 lines>...
+        timeout=60,
+    )
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/sdk/internal/internal_api.py", line 324, in execute
+    return self._service_api.execute_graphql(*args, **kwargs)  # type: ignore[return-value]
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/apis/public/service_api.py", line 158, in execute_graphql
+    response = self.send_api_request(
+        request,
+        timeout=timeout if timeout is not None else self._timeout,
+    )
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/apis/public/service_api.py", line 80, in send_api_request
+    return session.connection.api_request(request, timeout=timeout)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/sdk/lib/service/service_connection.py", line 252, in api_request
+    raise WandbApiFailedError(
+    ...<2 lines>...
+    ) from None
+wandb.sdk.lib.service.service_connection.WandbApiFailedError: Failed to execute API request: the service process is busy and did not respond in time.
+2026-07-25 19:02:45 ERROR Error communicating with W&B.
+Traceback (most recent call last):
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/sdk/internal/internal_api.py", line 2561, in agent_heartbeat
+    response = self.execute(
+        mutation,
+    ...<5 lines>...
+        timeout=60,
+    )
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/sdk/internal/internal_api.py", line 324, in execute
+    return self._service_api.execute_graphql(*args, **kwargs)  # type: ignore[return-value]
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/apis/public/service_api.py", line 158, in execute_graphql
+    response = self.send_api_request(
+        request,
+        timeout=timeout if timeout is not None else self._timeout,
+    )
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/apis/public/service_api.py", line 80, in send_api_request
+    return session.connection.api_request(request, timeout=timeout)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/sdk/lib/service/service_connection.py", line 252, in api_request
+    raise WandbApiFailedError(
+    ...<2 lines>...
+    ) from None
+wandb.sdk.lib.service.service_connection.WandbApiFailedError: Failed to execute API request: the service process is busy and did not respond in time.
+2026-07-25 19:03:50 ERROR Error communicating with W&B.
+Traceback (most recent call last):
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/sdk/internal/internal_api.py", line 2561, in agent_heartbeat
+    response = self.execute(
+        mutation,
+    ...<5 lines>...
+        timeout=60,
+    )
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/sdk/internal/internal_api.py", line 324, in execute
+    return self._service_api.execute_graphql(*args, **kwargs)  # type: ignore[return-value]
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/apis/public/service_api.py", line 158, in execute_graphql
+    response = self.send_api_request(
+        request,
+        timeout=timeout if timeout is not None else self._timeout,
+    )
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/apis/public/service_api.py", line 80, in send_api_request
+    return session.connection.api_request(request, timeout=timeout)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/sdk/lib/service/service_connection.py", line 252, in api_request
+    raise WandbApiFailedError(
+    ...<2 lines>...
+    ) from None
+wandb.sdk.lib.service.service_connection.WandbApiFailedError: Failed to execute API request: the service process is busy and did not respond in time.
+2026-07-25 19:04:55 ERROR Error communicating with W&B.
+Traceback (most recent call last):
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/sdk/internal/internal_api.py", line 2561, in agent_heartbeat
+    response = self.execute(
+        mutation,
+    ...<5 lines>...
+        timeout=60,
+    )
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/sdk/internal/internal_api.py", line 324, in execute
+    return self._service_api.execute_graphql(*args, **kwargs)  # type: ignore[return-value]
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/apis/public/service_api.py", line 158, in execute_graphql
+    response = self.send_api_request(
+        request,
+        timeout=timeout if timeout is not None else self._timeout,
+    )
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/apis/public/service_api.py", line 80, in send_api_request
+    return session.connection.api_request(request, timeout=timeout)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/sdk/lib/service/service_connection.py", line 252, in api_request
+    raise WandbApiFailedError(
+    ...<2 lines>...
+    ) from None
+wandb.sdk.lib.service.service_connection.WandbApiFailedError: Failed to execute API request: the service process is busy and did not respond in time.
+2026-07-25 19:06:00 ERROR Error communicating with W&B.
+Traceback (most recent call last):
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/sdk/internal/internal_api.py", line 2561, in agent_heartbeat
+    response = self.execute(
+        mutation,
+    ...<5 lines>...
+        timeout=60,
+    )
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/sdk/internal/internal_api.py", line 324, in execute
+    return self._service_api.execute_graphql(*args, **kwargs)  # type: ignore[return-value]
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/apis/public/service_api.py", line 158, in execute_graphql
+    response = self.send_api_request(
+        request,
+        timeout=timeout if timeout is not None else self._timeout,
+    )
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/apis/public/service_api.py", line 80, in send_api_request
+    return session.connection.api_request(request, timeout=timeout)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/sdk/lib/service/service_connection.py", line 252, in api_request
+    raise WandbApiFailedError(
+    ...<2 lines>...
+    ) from None
+wandb.sdk.lib.service.service_connection.WandbApiFailedError: Failed to execute API request: the service process is busy and did not respond in time.
+2026-07-25 19:07:05 ERROR Error communicating with W&B.
+Traceback (most recent call last):
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/sdk/internal/internal_api.py", line 2561, in agent_heartbeat
+    response = self.execute(
+        mutation,
+    ...<5 lines>...
+        timeout=60,
+    )
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/sdk/internal/internal_api.py", line 324, in execute
+    return self._service_api.execute_graphql(*args, **kwargs)  # type: ignore[return-value]
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/apis/public/service_api.py", line 158, in execute_graphql
+    response = self.send_api_request(
+        request,
+        timeout=timeout if timeout is not None else self._timeout,
+    )
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/apis/public/service_api.py", line 80, in send_api_request
+    return session.connection.api_request(request, timeout=timeout)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/sdk/lib/service/service_connection.py", line 252, in api_request
+    raise WandbApiFailedError(
+    ...<2 lines>...
+    ) from None
+wandb.sdk.lib.service.service_connection.WandbApiFailedError: Failed to execute API request: the service process is busy and did not respond in time.
+2026-07-25 19:08:10 ERROR Error communicating with W&B.
+Traceback (most recent call last):
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/sdk/internal/internal_api.py", line 2561, in agent_heartbeat
+    response = self.execute(
+        mutation,
+    ...<5 lines>...
+        timeout=60,
+    )
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/sdk/internal/internal_api.py", line 324, in execute
+    return self._service_api.execute_graphql(*args, **kwargs)  # type: ignore[return-value]
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/apis/public/service_api.py", line 158, in execute_graphql
+    response = self.send_api_request(
+        request,
+        timeout=timeout if timeout is not None else self._timeout,
+    )
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/apis/public/service_api.py", line 80, in send_api_request
+    return session.connection.api_request(request, timeout=timeout)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/sdk/lib/service/service_connection.py", line 252, in api_request
+    raise WandbApiFailedError(
+    ...<2 lines>...
+    ) from None
+wandb.sdk.lib.service.service_connection.WandbApiFailedError: Failed to execute API request: the service process is busy and did not respond in time.
+2026-07-25 19:09:15 ERROR Error communicating with W&B.
+Traceback (most recent call last):
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/sdk/internal/internal_api.py", line 2561, in agent_heartbeat
+    response = self.execute(
+        mutation,
+    ...<5 lines>...
+        timeout=60,
+    )
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/sdk/internal/internal_api.py", line 324, in execute
+    return self._service_api.execute_graphql(*args, **kwargs)  # type: ignore[return-value]
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/apis/public/service_api.py", line 158, in execute_graphql
+    response = self.send_api_request(
+        request,
+        timeout=timeout if timeout is not None else self._timeout,
+    )
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/apis/public/service_api.py", line 80, in send_api_request
+    return session.connection.api_request(request, timeout=timeout)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/wandb/sdk/lib/service/service_connection.py", line 252, in api_request
+    raise WandbApiFailedError(
+    ...<2 lines>...
+    ) from None
+wandb.sdk.lib.service.service_connection.WandbApiFailedError: Failed to execute API request: the service process is busy and did not respond in time.
+2026-07-25 19:11:15 INFO Cleaning up finished run: u8vkq2t7
+2026-07-25 19:11:15 INFO Reached EOF.
+2026-07-25 19:11:15 INFO Closing mailbox, abandoning 0 handles.
+2026-07-25 19:11:16 INFO Agent received command: run
+2026-07-25 19:11:16 INFO Agent starting run with config:
+	pre_impact_velocity_weight: 11.5
+2026-07-25 19:11:16 INFO About to run command: /usr/bin/env python acmpc/box_catch_sweep_train.py
+2026-07-25 19:11:21 INFO Running runs: ['40zbqp9d']
+2026-07-25 19:12:40 INFO Cleaning up finished run: 40zbqp9d
+2026-07-25 19:12:40 INFO Reached EOF.
+2026-07-25 19:12:40 INFO Closing mailbox, abandoning 0 handles.
+2026-07-25 19:12:40 INFO Agent received command: run
+2026-07-25 19:12:40 INFO Agent starting run with config:
+	pre_impact_velocity_weight: 12
+2026-07-25 19:12:40 INFO About to run command: /usr/bin/env python acmpc/box_catch_sweep_train.py
+2026-07-25 19:12:45 INFO Running runs: ['ces321yy']
+2026-07-25 19:14:10 INFO Cleaning up finished run: ces321yy
+2026-07-25 19:14:10 INFO Reached EOF.
+2026-07-25 19:14:10 INFO Closing mailbox, abandoning 0 handles.
+2026-07-25 19:14:11 INFO Agent received command: run
+2026-07-25 19:14:11 INFO Agent starting run with config:
+	pre_impact_velocity_weight: 12.5
+2026-07-25 19:14:11 INFO About to run command: /usr/bin/env python acmpc/box_catch_sweep_train.py
+2026-07-25 19:14:16 INFO Running runs: ['7fvdjrof']
+2026-07-25 19:15:19 INFO Cleaning up finished run: 7fvdjrof
+2026-07-25 19:15:19 INFO Reached EOF.
+2026-07-25 19:15:19 INFO Closing mailbox, abandoning 0 handles.
+2026-07-25 19:15:20 INFO Agent received command: run
+2026-07-25 19:15:20 INFO Agent starting run with config:
+	pre_impact_velocity_weight: 13
+2026-07-25 19:15:20 INFO About to run command: /usr/bin/env python acmpc/box_catch_sweep_train.py
+2026-07-25 19:15:25 INFO Running runs: ['r214d8ru']
+2026-07-25 19:16:28 INFO Cleaning up finished run: r214d8ru
+2026-07-25 19:16:28 INFO Reached EOF.
+2026-07-25 19:16:28 INFO Closing mailbox, abandoning 0 handles.
+2026-07-25 19:16:30 INFO Agent received command: run
+2026-07-25 19:16:30 INFO Agent starting run with config:
+	pre_impact_velocity_weight: 13.5
+2026-07-25 19:16:30 INFO About to run command: /usr/bin/env python acmpc/box_catch_sweep_train.py
+2026-07-25 19:16:35 INFO Running runs: ['3gkdknvy']
+2026-07-25 19:17:54 INFO Cleaning up finished run: 3gkdknvy
+2026-07-25 19:17:54 INFO Reached EOF.
+2026-07-25 19:17:54 INFO Closing mailbox, abandoning 0 handles.
+2026-07-25 19:17:55 INFO Agent received command: run
+2026-07-25 19:17:55 INFO Agent starting run with config:
+	pre_impact_velocity_weight: 14
+2026-07-25 19:17:55 INFO About to run command: /usr/bin/env python acmpc/box_catch_sweep_train.py
+2026-07-25 19:18:00 INFO Running runs: ['9m30bpvb']
+2026-07-25 19:19:29 INFO Cleaning up finished run: 9m30bpvb
+2026-07-25 19:19:29 INFO Reached EOF.
+2026-07-25 19:19:29 INFO Closing mailbox, abandoning 0 handles.

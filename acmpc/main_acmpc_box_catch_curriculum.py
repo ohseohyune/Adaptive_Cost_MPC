@@ -21,6 +21,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from collections import Counter
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Optional
@@ -31,14 +32,19 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from control.mpc.wandb_logger import build_eval_log, init_wandb
+from control.mpc.wandb_logger import build_eval_log, build_funnel_log, init_wandb
 from control.squeeze import (
     CurriculumScheduler,
     DynamicSideSqueezeConfig,
     resolve_ballistic_launch_position,
     resolve_ballistic_launch_velocity,
 )
-from acmpc.main_acmpc_box_catch import AcmpcBoxCatchConfig, BoxCatchSummary, run_box_catch
+from acmpc.main_acmpc_box_catch import (
+    AcmpcBoxCatchConfig,
+    BoxCatchSummary,
+    compute_episode_funnel,
+    run_box_catch,
+)
 
 
 @dataclass
@@ -101,6 +107,15 @@ class CurriculumBoxCatchEpisode:
     online_updates: int
     actor_weight_change_l2: float
     failure_reason: str
+    # Funnel stage reach + mutually-exclusive failure category -- see
+    # compute_episode_funnel in main_acmpc_box_catch.py.
+    reached_pre_impact: bool
+    first_contact_detected: bool
+    impact_safe: bool
+    bilateral_contact_achieved: bool
+    hold_entered: bool
+    stable_hold_completed: bool
+    failure_category: str
     # Standard RL training diagnostics (see BoxCatchSummary) -- what you'd
     # normally plot against episode/step count to judge whether training is
     # actually progressing, not just whether the latest episode succeeded.
@@ -115,6 +130,7 @@ class CurriculumBoxCatchEpisode:
     # run's JSON log can be aggregated across episodes (e.g. mean dwell time
     # per stage) the same way the reward/loss diagnostics above already are.
     phase_transition_count: int
+    hold_to_capture_demotion_count: int
     intercept_dwell_s: float
     pre_impact_dwell_s: float
     capture_dwell_s: float
@@ -241,9 +257,13 @@ def run_curriculum_box_catch(
                 wandb_logger=wandb_logger,
                 global_step_start=global_step,
             )
-            global_step += summary.total_transitions
+            # control_step_count (not total_transitions, which stays 0 for a
+            # fixed-baseline/online_learning=False run) keeps global_step
+            # monotonic regardless of mode.
+            global_step += summary.control_step_count
             safety_violation = _is_safety_violation(summary, squeeze)
             curriculum.record(summary.success, safety_violation=safety_violation)
+            funnel = compute_episode_funnel(summary, episode_config)
 
             episodes.append(
                 CurriculumBoxCatchEpisode(
@@ -261,6 +281,13 @@ def run_curriculum_box_catch(
                     online_updates=summary.online_updates,
                     actor_weight_change_l2=summary.actor_weight_change_l2,
                     failure_reason=summary.failure_reason,
+                    reached_pre_impact=funnel.reached_pre_impact,
+                    first_contact_detected=funnel.first_contact_detected,
+                    impact_safe=funnel.impact_safe,
+                    bilateral_contact_achieved=funnel.bilateral_contact_achieved,
+                    hold_entered=funnel.hold_entered,
+                    stable_hold_completed=funnel.stable_hold_completed,
+                    failure_category=funnel.failure_category,
                     total_reward=summary.total_reward,
                     mean_reward_per_step=summary.mean_reward_per_step,
                     actor_loss=summary.mean_actor_loss,
@@ -268,6 +295,7 @@ def run_curriculum_box_catch(
                     entropy=summary.mean_entropy,
                     approximate_kl=summary.mean_approximate_kl,
                     phase_transition_count=summary.phase_transition_count,
+                    hold_to_capture_demotion_count=summary.hold_to_capture_demotion_count,
                     intercept_dwell_s=summary.intercept_dwell_s,
                     pre_impact_dwell_s=summary.pre_impact_dwell_s,
                     capture_dwell_s=summary.capture_dwell_s,
@@ -305,6 +333,56 @@ def run_curriculum_box_catch(
                     ),
                     step=global_step,
                 )
+
+                # Funnel conditional success rates + failure-category counts
+                # (task 2's per-stage breakdown). Each P(X|Y) is conditioned
+                # only on the immediately preceding stage's own flag, not a
+                # cumulative AND-chain back to episode start -- e.g.
+                # bilateral contact can happen even after an unsafe first
+                # impact, so gating it on "impact_safe AND bilateral" would
+                # incorrectly drop those episodes from the HOLD stage's
+                # population.
+                passed_impact_stage = [
+                    e for e in window if e.first_contact_detected and e.impact_safe
+                ]
+                pre_impact_population = [e for e in window if e.reached_pre_impact]
+                bilateral_population = [e for e in window if e.bilateral_contact_achieved]
+                hold_population = [e for e in window if e.hold_entered]
+
+                def _rate(numerator: int, denominator: int) -> float:
+                    return float(numerator / denominator) if denominator else float("nan")
+
+                p_pre_impact = _rate(len(pre_impact_population), len(window))
+                p_impact_safe_given_pre_impact = _rate(
+                    sum(1 for e in pre_impact_population if e.first_contact_detected and e.impact_safe),
+                    len(pre_impact_population),
+                )
+                p_bilateral_given_impact_safe = _rate(
+                    sum(1 for e in passed_impact_stage if e.bilateral_contact_achieved),
+                    len(passed_impact_stage),
+                )
+                p_hold_given_bilateral = _rate(
+                    sum(1 for e in bilateral_population if e.hold_entered),
+                    len(bilateral_population),
+                )
+                p_success_given_hold = _rate(
+                    sum(1 for e in hold_population if e.success), len(hold_population)
+                )
+                failure_category_counts = dict(
+                    Counter(e.failure_category for e in window if not e.success)
+                )
+                wandb_logger.log(
+                    build_funnel_log(
+                        p_pre_impact=p_pre_impact,
+                        p_impact_safe_given_pre_impact=p_impact_safe_given_pre_impact,
+                        p_bilateral_given_impact_safe=p_bilateral_given_impact_safe,
+                        p_hold_given_bilateral=p_hold_given_bilateral,
+                        p_success_given_hold=p_success_given_hold,
+                        failure_category_counts=failure_category_counts,
+                    ),
+                    step=global_step,
+                )
+
                 print(
                     f"episodes {window[0].episode}-{window[-1].episode}: "
                     f"success_rate={rate:.3f} mean_reward={mean_reward:.2f} "

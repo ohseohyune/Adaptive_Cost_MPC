@@ -1,0 +1,4 @@
+wandb_version: 1
+
+pre_impact_velocity_weight:
+  value: 11.5

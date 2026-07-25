@@ -1,0 +1,33 @@
+# W&B Sweep config for acmpc/box_catch_sweep_train.py (Task 10 of the
+# "Fixed MPC baseline" tuning program). Search space is the two phase_prior
+# dims Task 9's manual 50-seed sweep already validated as helpful -- see
+# SWEEP_PARAMETERS in the train script for how these map onto
+# _BOX_CATCH_PHASE_PRIORS.
+#
+# Usage:
+#   wandb sweep sweep_config.yaml
+#   wandb agent <entity>/<project>/<SWEEP_ID>
+#
+# No ${args}: the train script reads swept values from wandb.config after
+# wandb.init(), not from argv, so the sweep controller only needs to run the
+# bare program.
+program: acmpc/box_catch_sweep_train.py
+project: adaptive-cost-mpc-box-catch
+method: bayes
+metric:
+  name: sweep/safety_first_objective
+  goal: maximize
+parameters:
+  hold_grasp_weight:
+    min: 0.0
+    max: 20.0
+  # max was 10.0 for the first stage-1 sweep (17g4v7y5, 20 runs); the top 8
+  # runs all pressed against that bound (9.75-10.0), so it was widened here
+  # to find where the benefit actually saturates.
+  pre_impact_velocity_weight:
+    min: 1.5
+    max: 15.0
+command:
+  - ${env}
+  - ${interpreter}
+  - ${program}

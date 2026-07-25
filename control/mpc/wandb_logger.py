@@ -26,6 +26,20 @@ from control.mpc.ppo_common import PPOUpdateSummary
 from control.squeeze.pad_contact import BilateralPadContact
 
 COST_NAMES = ("object", "grasp", "force", "velocity", "smoothness")
+# Log-key labels, not the dict keys used to index ACMPCAction.weights (those
+# stay COST_NAMES exactly, unchanged, for actor/checkpoint compatibility).
+# COST_NAMES[2] ("force") does not track any measured or predicted contact
+# force -- it is a compression-distance proxy for grip (see
+# acmpc/main_acmpc_box_catch.py's _LOG_COST_LABELS and
+# DifferentiableBimanualMPC.forward's comment) -- labelled "compression"
+# here to match, so a W&B panel never reads "force" for a term that isn't one.
+_LOG_LABELS = {
+    "object": "object",
+    "grasp": "grasp",
+    "force": "compression",
+    "velocity": "velocity",
+    "smoothness": "smoothness",
+}
 _RESIDUAL_EPSILON = 1e-6
 
 
@@ -85,6 +99,7 @@ def build_mpc_weight_log(
     }
     absolute_relative_mean: list[float] = []
     for index, name in enumerate(COST_NAMES):
+        label = _LOG_LABELS[name]
         final_value = float(final_weights[name][0])
         prior_value = float(phase_prior[index])
         absolute_residual = final_value - prior_value
@@ -93,11 +108,11 @@ def build_mpc_weight_log(
             if abs(prior_value) < _RESIDUAL_EPSILON
             else absolute_residual / (abs(prior_value) + _RESIDUAL_EPSILON)
         )
-        data[f"mpc/{name}_weight"] = final_value
-        data[f"mpc/phase_prior/{name}_weight"] = prior_value
-        data[f"mpc/final_weight/{name}_weight"] = final_value
-        data[f"mpc/residual_absolute/{name}_weight"] = absolute_residual
-        data[f"mpc/residual_relative/{name}_weight"] = relative_residual
+        data[f"mpc/{label}_weight"] = final_value
+        data[f"mpc/phase_prior/{label}_weight"] = prior_value
+        data[f"mpc/final_weight/{label}_weight"] = final_value
+        data[f"mpc/residual_absolute/{label}_weight"] = absolute_residual
+        data[f"mpc/residual_relative/{label}_weight"] = relative_residual
         if not np.isnan(relative_residual):
             absolute_relative_mean.append(abs(relative_residual))
     data["actor/mean_abs_residual_relative"] = (
@@ -166,6 +181,93 @@ def build_eval_log(
         "eval/stable_hold_rate": float(stable_hold_rate),
         "eval/mean_hold_time": float(mean_hold_time),
     }
+
+
+def _failure_count_log(failure_category_counts: dict[str, int]) -> dict[str, Any]:
+    """failure/<category> counts, category names sanitized for a wandb key."""
+
+    data: dict[str, Any] = {}
+    for category, count in failure_category_counts.items():
+        key = category.replace(" ", "_").replace("/", "_").replace("-", "_")
+        data[f"failure/{key}"] = int(count)
+    return data
+
+
+def build_funnel_log(
+    *,
+    p_pre_impact: float,
+    p_impact_safe_given_pre_impact: float,
+    p_bilateral_given_impact_safe: float,
+    p_hold_given_bilateral: float,
+    p_success_given_hold: float,
+    failure_category_counts: dict[str, int],
+) -> dict[str, Any]:
+    """funnel/p_* conditional success rates + failure/<category> counts.
+
+    Conditional probabilities are all NaN-safe (0/0 -> NaN, not 0.0) so an
+    empty stage population reads as "no data" rather than a fabricated zero.
+    failure_category_counts should come from EpisodeFunnel.failure_category
+    (main_acmpc_box_catch.py) -- one mutually-exclusive category per failed
+    episode, so the counts sum to exactly the window's failure count.
+    """
+
+    return {
+        "funnel/p_pre_impact": float(p_pre_impact),
+        "funnel/p_impact_safe_given_pre_impact": float(p_impact_safe_given_pre_impact),
+        "funnel/p_bilateral_given_impact_safe": float(p_bilateral_given_impact_safe),
+        "funnel/p_hold_given_bilateral": float(p_hold_given_bilateral),
+        "funnel/p_success_given_hold": float(p_success_given_hold),
+        **_failure_count_log(failure_category_counts),
+    }
+
+
+def build_sweep_summary_log(
+    *,
+    aggregate: dict[str, Any],
+    objective: float,
+    overrides: dict[str, float],
+) -> dict[str, Any]:
+    """sweep/*, funnel/*, catch/*, mpc/*, phase/*, cost_residual/*, failure/*.
+
+    One call per completed sweep run (an N-seed batch for one candidate
+    phase_priors override, from acmpc/box_catch_sweep_train.py's
+    run_one_config/_aggregate) -- not per episode. Only renames/flattens an
+    already-computed aggregate dict; no new metric is derived here.
+    """
+
+    data: dict[str, Any] = {
+        "sweep/safety_first_objective": float(objective),
+        "sweep/success_rate": float(aggregate["success_rate"]),
+        "sweep/unsafe_rate": float(aggregate["unsafe_rate"]),
+        "sweep/n_seeds": int(aggregate["n"]),
+        "funnel/p_pre_impact": float(aggregate["p_pre_impact"]),
+        "funnel/p_impact_safe_given_pre_impact": float(aggregate["p_impact_safe_given_pre_impact"]),
+        "funnel/p_bilateral_given_impact_safe": float(aggregate["p_bilateral_given_impact_safe"]),
+        "funnel/p_hold_given_bilateral": float(aggregate["p_hold_given_bilateral"]),
+        "funnel/p_success_given_hold": float(aggregate["p_success_given_hold"]),
+        "catch/mean_first_contact_peak_force": float(aggregate["mean_first_contact_peak_force_n"]),
+        "catch/max_first_contact_peak_force": float(aggregate["max_first_contact_peak_force_n"]),
+        "catch/mean_bilateral_contact_time_s": float(aggregate["mean_bilateral_contact_time_s"]),
+        "catch/mean_hold_to_capture_demotion_count": float(
+            aggregate["mean_hold_to_capture_demotion_count"]
+        ),
+        "mpc/mean_solve_time_s": float(aggregate["mean_mpc_solve_time_s"]),
+        "mpc/mean_velocity_saturation_fraction": float(aggregate["mean_velocity_saturation_fraction"]),
+        "actor/mean_output_variation": float(aggregate["mean_actor_output_variation"]),
+        "phase/mean_intercept_dwell_s": float(aggregate["mean_intercept_dwell_s"]),
+        "phase/mean_pre_impact_dwell_s": float(aggregate["mean_pre_impact_dwell_s"]),
+        "phase/mean_capture_dwell_s": float(aggregate["mean_capture_dwell_s"]),
+        "phase/mean_hold_dwell_s": float(aggregate["mean_hold_dwell_s"]),
+        "cost_residual/object": float(aggregate["mean_residual_object"]),
+        "cost_residual/grasp": float(aggregate["mean_residual_grasp"]),
+        "cost_residual/compression": float(aggregate["mean_residual_compression"]),
+        "cost_residual/velocity": float(aggregate["mean_residual_velocity"]),
+        "cost_residual/smoothness": float(aggregate["mean_residual_smoothness"]),
+        **_failure_count_log(aggregate["failure_category_counts"]),
+    }
+    for name, value in overrides.items():
+        data[f"sweep/param/{name}"] = float(value)
+    return data
 
 
 def init_wandb(

@@ -43,7 +43,11 @@ if str(ROOT) not in sys.path:
 
 from control.clik import build_serial_arm, get_ee_transform
 from control.clik.catching import adaptive_stiffness
-from control.clik.impedance import CartesianImpedanceConfig, CartesianImpedanceController
+from control.clik.impedance import (
+    CartesianImpedanceConfig,
+    CartesianImpedanceController,
+    ee_jacobian_world,
+)
 from control.mpc import (
     ACMPCRolloutBuffer,
     DifferentiableMPCConfig,
@@ -154,6 +158,28 @@ _CATCH_PHASE_TO_CONTROL_INDEX = {
     # SUCCESS/FAILED intentionally absent: both are terminal (see CatchPhase's
     # docstring) and run_box_catch never looks up a control index for them --
     # it breaks out of the control loop before reaching that point.
+}
+
+# Per-phase diagnostic init modes (see build_diagnostic_state). Each
+# test_* mode places the box directly in that phase's regime -- reusing the
+# real scene/impedance/MPC, not a separate simplified model -- so a phase
+# can be evaluated repeatedly regardless of whether the earlier phases would
+# have succeeded. "full_episode"/"test_intercept" are both the existing,
+# unmodified far-away ballistic launch (INTERCEPT start); test_intercept is
+# just an explicit name for it, not a different init.
+DIAGNOSTIC_MODES = (
+    "full_episode",
+    "test_intercept",
+    "test_pre_impact",
+    "test_capture_left_contact",
+    "test_capture_right_contact",
+    "test_hold",
+)
+_DIAGNOSTIC_MODE_PHASE = {
+    "test_pre_impact": CatchPhase.PRE_IMPACT,
+    "test_capture_left_contact": CatchPhase.CAPTURE,
+    "test_capture_right_contact": CatchPhase.CAPTURE,
+    "test_hold": CatchPhase.HOLD,
 }
 
 # object, grasp geometry, compression proxy, velocity feed-forward, command
@@ -405,8 +431,18 @@ class AcmpcBoxCatchConfig:
     # Control steps between W&B mpc/state/catch log points -- these fire at
     # control-step frequency, so a too-small interval floods the dashboard.
     wandb_log_interval: int = 10
+    # Per-phase diagnostic init (see DIAGNOSTIC_MODES/build_diagnostic_state
+    # below): overrides the box's initial qpos/qvel and the episode's
+    # starting phase so a phase can be tested repeatedly without needing
+    # the earlier phases to succeed first. "full_episode" (default) is an
+    # exact no-op -- the normal far-away ballistic launch, INTERCEPT start.
+    diagnostic_mode: str = "full_episode"
 
     def __post_init__(self) -> None:
+        if self.diagnostic_mode not in DIAGNOSTIC_MODES:
+            raise ValueError(
+                f"diagnostic_mode must be one of {DIAGNOSTIC_MODES}, got {self.diagnostic_mode!r}"
+            )
         if self.squeeze is None:
             self.squeeze = DynamicSideSqueezeConfig(random_seed=self.seed)
         if not self.phase_priors:
@@ -443,6 +479,13 @@ class BoxCatchSummary:
     final_box_speed_mps: float
     online_updates: int
     total_transitions: int
+    # Control steps actually run this episode, regardless of
+    # online_learning -- unlike total_transitions (only incremented inside
+    # the online_learning-gated rollout block, so it stays 0 for a fixed
+    # baseline run), this is always a true step count. Use this, not
+    # total_transitions, for a global_step counter that must stay
+    # monotonic across both fixed-baseline and online-learning episodes.
+    control_step_count: int
     actor_weight_change_l2: float
     device: str
     total_reward: float
@@ -462,6 +505,10 @@ class BoxCatchSummary:
     # log_path when one is given). See _log_cost_contributions's docstring
     # for exactly how raw/weighted costs are computed.
     phase_transition_count: int
+    # The only *backward* transition in this state machine (HOLD -> CAPTURE
+    # demotion) -- a direct chatter signal, unlike phase_transition_count
+    # which also counts normal forward progress.
+    hold_to_capture_demotion_count: int
     intercept_dwell_s: float
     pre_impact_dwell_s: float
     capture_dwell_s: float
@@ -502,6 +549,102 @@ class BoxCatchSummary:
     # mean_critic_loss/mean_entropy/mean_approximate_kl above, from the PPO
     # updates that did run).
     mean_actor_output_variation: float
+    # Fraction of HOLD-phase control steps where each strict_stable_contact
+    # sub-condition broke (see the HOLD branch above) -- 0.0 when HOLD was
+    # never reached. Distinguishes an insufficient-grip hold break (force)
+    # from an unstable-box-motion break (speed/angular) without inventing a
+    # new threshold; reuses the same booleans hold_timer/strict_hold_timer
+    # already gate on.
+    hold_force_violation_fraction: float
+    hold_speed_violation_fraction: float
+    hold_angular_violation_fraction: float
+
+
+@dataclass(frozen=True)
+class EpisodeFunnel:
+    """One episode's funnel stage reach + a single mutually-exclusive failure
+    category, derived entirely from BoxCatchSummary fields already computed
+    by run_box_catch -- no new success/safety judgment, only naming/grouping
+    of existing signals."""
+
+    reached_pre_impact: bool
+    first_contact_detected: bool
+    impact_safe: bool
+    bilateral_contact_achieved: bool
+    hold_entered: bool
+    stable_hold_completed: bool
+    episode_success: bool
+    # "" when episode_success -- one of: viewer closed, emergency force,
+    # interception miss, excessive first-contact impact, unilateral-contact
+    # failure, insufficient grip, contact loss, unstable box motion, timeout.
+    # "numerical/solver failure" is not produced: the differentiable MPC
+    # solve (torch.linalg.solve) has no solved/failed status to reuse here
+    # (unlike the OSQP-based controllers elsewhere in this repo), so
+    # detecting it would require inventing a new signal -- flagged as a gap
+    # rather than guessed.
+    failure_category: str
+
+
+def compute_episode_funnel(
+    summary: BoxCatchSummary, config: AcmpcBoxCatchConfig
+) -> EpisodeFunnel:
+    reached_pre_impact = summary.pre_impact_dwell_s > 0.0
+    first_contact_detected = summary.first_contact_time_s is not None
+    impact_safe = summary.first_contact_peak_force_n <= config.squeeze.first_contact_force_limit
+    bilateral_contact_achieved = summary.bilateral_contact_time_s is not None
+    hold_entered = summary.hold_dwell_s > 0.0
+    stable_hold_completed = summary.hold_time_s >= config.required_hold_s
+    episode_success = summary.success
+
+    reason = summary.failure_reason.lower()
+    if episode_success:
+        failure_category = ""
+    elif "viewer closed" in reason:
+        failure_category = "viewer closed"
+    elif "emergency" in reason:
+        failure_category = "emergency force"
+    elif not reached_pre_impact or not first_contact_detected:
+        # Covers both never leaving INTERCEPT and reaching PRE_IMPACT but
+        # the box crossing the interception-workspace boundary before any
+        # touch (the dominant "full" stage failure mode found this session).
+        failure_category = "interception miss"
+    elif not impact_safe:
+        # Peak first-contact force is a running max over the whole episode
+        # (FirstContactForceLimiter never resets it), so an unsafe impact is
+        # chronologically the earliest problem regardless of what happens
+        # in later phases -- checked before bilateral/hold/timeout below.
+        failure_category = "excessive first-contact impact"
+    elif not bilateral_contact_achieved:
+        failure_category = "unilateral-contact failure"
+    elif not hold_entered:
+        failure_category = "insufficient grip"
+    elif not stable_hold_completed:
+        # HOLD was entered but strict_stable_contact never held continuously
+        # for required_hold_s -- attribute to whichever of its sub-conditions
+        # broke more often (hold_*_violation_fraction, already computed in
+        # run_box_catch's HOLD branch).
+        force_violation = summary.hold_force_violation_fraction
+        motion_violation = max(
+            summary.hold_speed_violation_fraction, summary.hold_angular_violation_fraction
+        )
+        failure_category = (
+            "contact loss" if force_violation >= motion_violation else "unstable box motion"
+        )
+    else:
+        # Should not normally trigger once the stages above are exhaustive;
+        # kept as an explicit fallback rather than silently mis-attributing.
+        failure_category = "timeout"
+
+    return EpisodeFunnel(
+        reached_pre_impact=reached_pre_impact,
+        first_contact_detected=first_contact_detected,
+        impact_safe=impact_safe,
+        bilateral_contact_achieved=bilateral_contact_achieved,
+        hold_entered=hold_entered,
+        stable_hold_completed=stable_hold_completed,
+        episode_success=episode_success,
+        failure_category=failure_category,
+    )
 
 
 def _require_id(model: mujoco.MjModel, kind: mujoco.mjtObj, name: str) -> int:
@@ -605,6 +748,64 @@ def _cost_contributions(
             "weighted": weight_first_step * raw[name],
         }
     return result
+
+
+def build_diagnostic_state(
+    mode: str,
+    model: mujoco.MjModel,
+    data: mujoco.MjData,
+    *,
+    box_half_y: float,
+) -> tuple[np.ndarray, np.ndarray, CatchPhase]:
+    """Box (position, velocity) and starting phase for one diagnostic mode.
+
+    Reads the arms' *current* pose (caller must already have set them to
+    home and called mj_forward once) to place the box relative to where
+    left/right_catch_pad actually are -- same scene, same pads, no separate
+    simplified geometry. "full_episode"/"test_intercept" are not handled
+    here; run_box_catch keeps its normal ballistic-launch position/velocity
+    for those.
+    """
+
+    left_pad_gid = _require_id(model, mujoco.mjtObj.mjOBJ_GEOM, "left_catch_pad")
+    right_pad_gid = _require_id(model, mujoco.mjtObj.mjOBJ_GEOM, "right_catch_pad")
+    left_pad_pos = data.geom_xpos[left_pad_gid].copy()
+    right_pad_pos = data.geom_xpos[right_pad_gid].copy()
+    pad_half_thickness = float(model.geom_size[left_pad_gid][0])
+
+    box_x = 0.5 * (left_pad_pos[0] + right_pad_pos[0])
+    box_z = 0.5 * (left_pad_pos[2] + right_pad_pos[2])
+    # Box-center Y at which left/right pad would each just touch the box
+    # surface (left approaches from +y, right from -y -- see Task 3's
+    # right-arm measurement in this session; left is the mirror image).
+    left_touch_y = left_pad_pos[1] - pad_half_thickness - box_half_y
+    right_touch_y = right_pad_pos[1] + pad_half_thickness + box_half_y
+    bilateral_center_y = 0.5 * (left_touch_y + right_touch_y)
+    compression_margin = 0.003  # 3mm initial overlap so contact reads nonzero from step 0
+    single_side_offset = 0.02  # 2cm toward one pad, clear of the other
+
+    if mode == "test_hold":
+        box_y = bilateral_center_y
+        box_velocity = np.zeros(3)
+        phase = CatchPhase.HOLD
+    elif mode == "test_capture_left_contact":
+        box_y = left_touch_y - compression_margin + single_side_offset
+        box_velocity = np.array([0.0, 0.0, -0.2])
+        phase = CatchPhase.CAPTURE
+    elif mode == "test_capture_right_contact":
+        box_y = right_touch_y + compression_margin - single_side_offset
+        box_velocity = np.array([0.0, 0.0, -0.2])
+        phase = CatchPhase.CAPTURE
+    elif mode == "test_pre_impact":
+        standoff = 0.08
+        box_y = bilateral_center_y
+        box_velocity = np.array([0.0, 0.0, -0.5])
+        box_z = box_z + standoff  # still above/short of the pads, closing via -z fall
+        phase = CatchPhase.PRE_IMPACT
+    else:
+        raise ValueError(f"build_diagnostic_state does not handle mode {mode!r}")
+
+    return np.array([box_x, box_y, box_z]), box_velocity, phase
 
 
 def _reward(
@@ -893,11 +1094,43 @@ def run_box_catch(
     )
 
     data.eq_active[fixture_id] = 0
-    data.qvel[box_dof_address : box_dof_address + 3] = launch_velocity
+    if config.diagnostic_mode in _DIAGNOSTIC_MODE_PHASE:
+        # Reads the arms' current (home) pose to place the box relative to
+        # the real catch pads -- see build_diagnostic_state's docstring.
+        diagnostic_position, diagnostic_velocity, initial_phase = build_diagnostic_state(
+            config.diagnostic_mode, model, data, box_half_y=cfg.box_half_y,
+        )
+        data.qpos[box_qpos_address : box_qpos_address + 3] = diagnostic_position
+        data.qvel[box_dof_address : box_dof_address + 3] = diagnostic_velocity
+    else:
+        data.qvel[box_dof_address : box_dof_address + 3] = launch_velocity
+        initial_phase = CatchPhase.INTERCEPT
     mujoco.mj_forward(model, data)
-    predictor.reset(initial_velocity=launch_velocity)
+    predictor.reset(initial_velocity=data.qvel[box_dof_address : box_dof_address + 3].copy())
 
-    phase = CatchPhase.INTERCEPT
+    if config.diagnostic_mode == "test_hold":
+        # The home arm pose alone doesn't reach the box (pads start ~0.43m
+        # apart, a nominal box is only ~0.30m wide) -- drive both arms in
+        # to grip it first, using the exact same target formula the main
+        # loop uses (target_center +/- pad_offset_scalar*y_axis), so HOLD
+        # starts from a real, physically-settled bilateral grip instead of
+        # an unreachable box placement.
+        settle_y_axis = np.array([0.0, 1.0, 0.0])
+        settle_center = diagnostic_position
+        for name, sign in (("left", 1.0), ("right", -1.0)):
+            desired_transforms[name][:3, 3] = settle_center + sign * pad_offset_scalar * settle_y_axis
+        for _ in range(int(0.5 / dt)):
+            # Pin the box in place while the arms close in -- otherwise it
+            # free-falls away from the (fixed-height) target during the
+            # settle, since only the arms are meant to move here. Released
+            # the instant the settle ends and the main loop begins.
+            data.qpos[box_qpos_address : box_qpos_address + 3] = diagnostic_position
+            data.qvel[box_dof_address : box_dof_address + 3] = 0.0
+            for name in ("left", "right"):
+                impedance[name].apply(model, data, arms[name], desired_transforms[name])
+            mujoco.mj_step(model, data)
+
+    phase = initial_phase
     phase_started = 0.0
     hold_timer = 0.0
     # HOLD -> CAPTURE demotion debounce (see the HOLD branch below) -- how
@@ -907,6 +1140,16 @@ def run_box_catch(
     hold_break_timer = 0.0
     strict_hold_timer = 0.0
     max_strict_hold_timer = 0.0
+    # Which of strict_stable_contact's three conditions broke, counted only
+    # for control steps where phase is HOLD -- reused as-is (not new
+    # judgment logic) by the failure-category funnel in
+    # main_acmpc_box_catch_curriculum.py to tell "insufficient grip"
+    # (force) apart from "unstable box motion" (speed/angular) when a hold
+    # streak resets.
+    hold_step_count = 0
+    hold_force_violation_count = 0
+    hold_speed_violation_count = 0
+    hold_angular_violation_count = 0
     bilateral_contact_time: Optional[float] = None
     # NOTE: capture_center/capture_reference_velocity/capture_rotation below
     # predate and are unrelated to the new CatchPhase.CAPTURE -- they name
@@ -927,11 +1170,16 @@ def run_box_catch(
 
     # --- Phase-prior / phase-observation smoothstep blending state (item 3).
     # Initialized so blend_*_start == blend_*_target at episode start (phase
-    # is already INTERCEPT with no prior transition), giving beta's value no
-    # effect and zero discontinuity at step 0.
-    _initial_prior = np.asarray(config.phase_priors[CatchControlPhase.INTERCEPT], dtype=np.float32)
+    # has no prior transition to blend from yet), giving beta's value no
+    # effect and zero discontinuity at step 0. _initial_control_index tracks
+    # whatever phase was actually injected (INTERCEPT normally, or a
+    # diagnostic mode's phase above) so the actor's prior/observation start
+    # in agreement with the true physical state instead of always claiming
+    # INTERCEPT.
+    _initial_control_index = _CATCH_PHASE_TO_CONTROL_INDEX[phase]
+    _initial_prior = np.asarray(config.phase_priors[_initial_control_index], dtype=np.float32)
     _initial_onehot = np.zeros(N_CONTROL_PHASES, dtype=np.float32)
-    _initial_onehot[CatchControlPhase.INTERCEPT] = 1.0
+    _initial_onehot[_initial_control_index] = 1.0
     blend_prior_start = _initial_prior.copy()
     blend_prior_target = _initial_prior.copy()
     current_blended_prior = _initial_prior.copy()
@@ -944,6 +1192,11 @@ def run_box_catch(
     total_transitions = 0
     total_reward = 0.0
     latest_update: Optional[PPOUpdateSummary] = None
+    # Task 8: most recently computed lower-controller diagnostics (torque,
+    # impedance position error, measured EE velocity) -- one control
+    # step stale in the CSV row, same "most recently available" pattern
+    # actor_loss/critic_loss below already use for latest_update.
+    latest_impedance: dict[str, object] = {"left": None, "right": None}
     last_observation: Optional[np.ndarray] = None
     last_phase: Optional[CatchControlPhase] = None
     last_ee_positions: Optional[np.ndarray] = None
@@ -957,6 +1210,7 @@ def run_box_catch(
     # --- Episode-level diagnostics accumulated per control step (item 9);
     # reduced to means/fractions once at the end, see BoxCatchSummary.
     phase_transition_count = 0
+    hold_to_capture_demotion_count = 0
     phase_dwell_s = {CatchPhase.INTERCEPT: 0.0, CatchPhase.PRE_IMPACT: 0.0,
                       CatchPhase.CAPTURE: 0.0, CatchPhase.HOLD: 0.0}
     blend_active_steps = 0
@@ -1239,6 +1493,14 @@ def run_box_catch(
                     strict_hold_timer + control_dt if strict_stable_contact else 0.0
                 )
                 max_strict_hold_timer = max(max_strict_hold_timer, strict_hold_timer)
+                if phase is CatchPhase.HOLD:
+                    hold_step_count += 1
+                    if not strict_force_ok:
+                        hold_force_violation_count += 1
+                    if not strict_speed_ok:
+                        hold_speed_violation_count += 1
+                    if not strict_angular_ok:
+                        hold_angular_violation_count += 1
 
                 # d_hand-box: actual hand-to-box distance (not endpoint_error,
                 # which measures hand-to-*target* -- target is intercept_center,
@@ -1330,6 +1592,13 @@ def run_box_catch(
                             phase = CatchPhase.CAPTURE
                             hold_timer = 0.0
                             hold_break_timer = 0.0
+                            # The only *backward* transition in this state
+                            # machine -- unlike phase_transition_count
+                            # (which also counts normal forward progress),
+                            # this is a direct, unambiguous chatter signal:
+                            # >0 means HOLD was entered and lost at least
+                            # once this episode.
+                            hold_to_capture_demotion_count += 1
 
                     if phase is CatchPhase.HOLD and hold_timer >= config.required_hold_s:
                         if impact.force_limit_exceeded:
@@ -1777,6 +2046,83 @@ def run_box_catch(
                         "actor_loss": 0.0 if latest_update is None else latest_update.actor_loss,
                         "critic_loss": 0.0 if latest_update is None else latest_update.critic_loss,
                         "blend_beta": blend_beta,
+                        # Task 6: transition discontinuity metrics -- reuse
+                        # command_velocity/previous_command_velocity/
+                        # config.mpc_velocity_limit exactly as the episode
+                        # summary's own saturation counter does, and
+                        # old_phase/phase exactly as phase_transition_count
+                        # does, rather than recomputing anything new.
+                        "command_velocity_norm": float(np.linalg.norm(command_velocity)),
+                        "command_delta_norm": float(
+                            np.linalg.norm(command_velocity - previous_command_velocity)
+                        ),
+                        "velocity_saturated": bool(
+                            np.any(np.abs(command_velocity) >= 0.98 * config.mpc_velocity_limit)
+                        ),
+                        "phase_transition": bool(phase is not old_phase),
+                        # Task 8: lower-controller tracking diagnostics.
+                        # impedance_pos_error_norm/torque_norm come from
+                        # latest_impedance (one control step stale, same
+                        # pattern as actor_loss/critic_loss above -- the
+                        # impedance controller applies every physics
+                        # substep, not just every control step, so "latest"
+                        # is always very recent). measured_ee_velocity/
+                        # jacobian_condition/joint_limit_margin are
+                        # recomputed fresh here (cheap, no physics/MPC
+                        # re-solve) since they don't depend on apply()'s
+                        # return value.
+                        **{
+                            f"{_side}_measured_ee_velocity_norm": float(
+                                np.linalg.norm(
+                                    ee_jacobian_world(model, data, arms[_side])[3:]
+                                    @ data.qvel[arms[_side].qvel_indices]
+                                )
+                            )
+                            for _side in ("left", "right")
+                        },
+                        **{
+                            f"{_side}_impedance_pos_error_norm": (
+                                float("nan")
+                                if latest_impedance[_side] is None
+                                else float(latest_impedance[_side].e_pos_norm)
+                            )
+                            for _side in ("left", "right")
+                        },
+                        **{
+                            f"{_side}_torque_norm": (
+                                float("nan")
+                                if latest_impedance[_side] is None
+                                else float(np.linalg.norm(latest_impedance[_side].tau))
+                            )
+                            for _side in ("left", "right")
+                        },
+                        **{
+                            f"{_side}_torque_saturated": bool(
+                                latest_impedance[_side] is not None
+                                and np.any(
+                                    np.abs(latest_impedance[_side].tau)
+                                    >= 0.99 * impedance[_side].config.tau_limit
+                                )
+                            )
+                            for _side in ("left", "right")
+                        },
+                        **{
+                            f"{_side}_joint_limit_margin": float(
+                                np.min(
+                                    np.minimum(
+                                        data.qpos[arms[_side].qpos_indices] - arms[_side].ctrl_low,
+                                        arms[_side].ctrl_high - data.qpos[arms[_side].qpos_indices],
+                                    )
+                                )
+                            )
+                            for _side in ("left", "right")
+                        },
+                        **{
+                            f"{_side}_jacobian_condition": float(
+                                np.linalg.cond(ee_jacobian_world(model, data, arms[_side]))
+                            )
+                            for _side in ("left", "right")
+                        },
                         **{
                             f"weight/{_LOG_COST_LABELS[_name]}": _contributions[_name]["weight"]
                             for _name in COST_NAMES
@@ -1811,7 +2157,9 @@ def run_box_catch(
                 desired_transforms["right"][:3, 3] = base_commanded_position["right"]
 
             for name in ("left", "right"):
-                impedance[name].apply(model, data, arms[name], desired_transforms[name])
+                latest_impedance[name] = impedance[name].apply(
+                    model, data, arms[name], desired_transforms[name]
+                )
                 data.ctrl[gripper_ids[name]] = FFW_GRIPPERS[name].open_ctrl
 
             mujoco.mj_step(model, data)
@@ -1850,7 +2198,7 @@ def run_box_catch(
         updates.append(latest_update)
         wandb_logger.log(
             build_ppo_update_log(latest_update),
-            step=global_step_start + total_transitions,
+            step=global_step_start + control_step_count,
         )
         rollout.clear()
 
@@ -1864,7 +2212,7 @@ def run_box_catch(
             writer.writeheader()
             writer.writerows(rows)
 
-    episode_final_step = global_step_start + total_transitions
+    episode_final_step = global_step_start + control_step_count
     wandb_logger.log(build_episode_reward_log(total_reward), step=episode_final_step)
     if owns_wandb_logger:
         wandb_logger.finish()
@@ -1886,6 +2234,7 @@ def run_box_catch(
         final_box_speed_mps=final_box_speed,
         online_updates=learner.update_count,
         total_transitions=total_transitions,
+        control_step_count=control_step_count,
         actor_weight_change_l2=float(np.linalg.norm(final_actor - initial_actor)),
         device=str(learner.device),
         total_reward=float(total_reward),
@@ -1898,6 +2247,7 @@ def run_box_catch(
         strict_hold_time_s=float(max_strict_hold_timer),
         required_grip_force_n=float(required_grip_force),
         phase_transition_count=phase_transition_count,
+        hold_to_capture_demotion_count=hold_to_capture_demotion_count,
         intercept_dwell_s=float(phase_dwell_s[CatchPhase.INTERCEPT]),
         pre_impact_dwell_s=float(phase_dwell_s[CatchPhase.PRE_IMPACT]),
         capture_dwell_s=float(phase_dwell_s[CatchPhase.CAPTURE]),
@@ -1933,6 +2283,15 @@ def run_box_catch(
             float(actor_output_variation_sum / actor_output_variation_count)
             if actor_output_variation_count
             else 0.0
+        ),
+        hold_force_violation_fraction=(
+            float(hold_force_violation_count / hold_step_count) if hold_step_count else 0.0
+        ),
+        hold_speed_violation_fraction=(
+            float(hold_speed_violation_count / hold_step_count) if hold_step_count else 0.0
+        ),
+        hold_angular_violation_fraction=(
+            float(hold_angular_violation_count / hold_step_count) if hold_step_count else 0.0
         ),
     )
 

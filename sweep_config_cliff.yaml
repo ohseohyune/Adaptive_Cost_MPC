@@ -1,0 +1,22 @@
+# Diagnostic sweep, not the main search: maps out where pre_impact_velocity_weight
+# starts causing unsafe first-contact impacts (see sweep ehpvjraa's outlier at
+# 14.58 -- unsafe_rate jumped from 0.00 everywhere else to 0.05). Grid, not
+# bayes, so coverage across 8-14 is even instead of an optimizer avoiding the
+# unsafe region once it finds it. hold_grasp_weight is left out of
+# `parameters` entirely (box_catch_sweep_train.py falls back to the
+# _BOX_CATCH_PHASE_PRIORS baseline, 20.0, for any param not in wandb.config)
+# to isolate this one variable -- Task 7/9 already found hold_grasp_weight
+# has no real effect on success, so it would only add noise here.
+program: acmpc/box_catch_sweep_train.py
+project: adaptive-cost-mpc-box-catch
+method: grid
+metric:
+  name: sweep/safety_first_objective
+  goal: maximize
+parameters:
+  pre_impact_velocity_weight:
+    values: [8.0, 8.5, 9.0, 9.5, 10.0, 10.5, 11.0, 11.5, 12.0, 12.5, 13.0, 13.5, 14.0]
+command:
+  - ${env}
+  - ${interpreter}
+  - ${program}
