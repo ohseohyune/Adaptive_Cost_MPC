@@ -232,6 +232,22 @@ def apply_box_domain_randomization(
 
     half_size = np.asarray(parameters.half_size, dtype=float)
     model.geom_size[geom_id, :3] = half_size
+    # geom_size is mutable at runtime, but MuJoCo does not rebuild geom_aabb
+    # for it (mj_setConst below only refreshes mass-dependent constants).
+    # Leaving the compiled nominal AABB here makes broad phase silently miss
+    # contacts on any randomized box face outside the nominal dimensions.
+    model.geom_aabb[geom_id, :3] = 0.0
+    model.geom_aabb[geom_id, 3:] = half_size
+    bvh_start = int(model.body_bvhadr[body_id])
+    bvh_stop = bvh_start + int(model.body_bvhnum[body_id])
+    box_bvh_nodes = [
+        index
+        for index in range(bvh_start, bvh_stop)
+        if int(model.bvh_nodeid[index]) == geom_id
+    ]
+    if len(box_bvh_nodes) != 1:
+        raise ValueError("dynamic box must have exactly one BVH leaf")
+    model.bvh_aabb[box_bvh_nodes[0]] = model.geom_aabb[geom_id]
     model.geom_rbound[geom_id] = float(np.linalg.norm(half_size))
     model.geom_friction[geom_id, 0] = parameters.friction
     model.body_mass[body_id] = parameters.mass

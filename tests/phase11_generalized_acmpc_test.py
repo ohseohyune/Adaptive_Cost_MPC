@@ -70,6 +70,17 @@ def test_domain_randomization_changes_complete_physics() -> None:
     geom = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_GEOM, "dynamic_box_geom")
     body = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, "dynamic_box")
     assert np.allclose(model.geom_size[geom], domain.half_size)
+    assert np.allclose(model.geom_aabb[geom, :3], 0.0)
+    assert np.allclose(model.geom_aabb[geom, 3:], domain.half_size)
+    bvh_leaf = next(
+        index
+        for index in range(
+            int(model.body_bvhadr[body]),
+            int(model.body_bvhadr[body] + model.body_bvhnum[body]),
+        )
+        if int(model.bvh_nodeid[index]) == geom
+    )
+    assert np.allclose(model.bvh_aabb[bvh_leaf], model.geom_aabb[geom])
     assert np.isclose(model.body_mass[body], domain.mass)
     assert np.isclose(model.geom_friction[geom, 0], domain.friction)
     for name in ("dynamic_left_pad_box", "dynamic_right_pad_box"):
