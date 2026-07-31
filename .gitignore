@@ -10,3 +10,5 @@ sweep_results/box_side_squeeze.csv
 sweep_results/dynamic_box_squeeze.csv
 sweep_results/rotating_box_squeeze.csv
 logs/
+dashboard/runs/
+wandb/
