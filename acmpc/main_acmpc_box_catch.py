@@ -27,6 +27,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import os
 import sys
 import time
 from dataclasses import asdict, dataclass
@@ -41,7 +42,7 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from control.clik import build_serial_arm, get_ee_transform
+from control.clik import build_serial_arm, get_ee_transform, make_transform, transform_inverse
 from control.clik.catching import adaptive_stiffness
 from control.clik.impedance import (
     CartesianImpedanceConfig,
@@ -65,6 +66,7 @@ from control.mpc.wandb_logger import (
     WandbLogger,
     build_contact_log,
     build_episode_reward_log,
+    build_fixture_log,
     build_mpc_weight_log,
     build_ppo_update_log,
     init_wandb,
@@ -76,6 +78,7 @@ from control.squeeze import (
     FirstContactForceLimiter,
     adaptive_impact_command,
     apply_box_domain_randomization,
+    minimum_symmetric_squeeze_force,
     read_bilateral_pad_contact,
     resolve_ballistic_launch_position,
     resolve_ballistic_launch_velocity,
@@ -94,6 +97,18 @@ _NOMINAL_BOX_MASS = 0.50
 _NOMINAL_BOX_FRICTION = 1.20
 _NOMINAL_BOX_HALF_SIZE = (0.055, 0.150, 0.055)
 _GRAVITY_MPS2 = 9.81
+# Minimum |vx| to trust a TTC estimate at all (see remaining_ttc_valid).
+# 1e-3 (the old divide-by-zero guard) let a near-static/noisy box's tiny
+# position-estimator jitter occasionally produce a small, spuriously "valid"
+# TTC, firing an early false-positive INTERCEPT->PRE_IMPACT transition
+# before any real approach (observed with use_launch_fixture=True: transition
+# fired at t=0.03s while the box was still resting in the fixture). Every
+# real ballistic launch stage's speed range (~0.6-1.8 m/s, see
+# progressive_curriculum.py's CurriculumStage launch_velocity ranges) is
+# comfortably above this floor throughout flight, so this is not a
+# behavior change for real ballistic approaches -- only for a genuinely
+# near-zero closing speed.
+_MIN_MEANINGFUL_APPROACH_SPEED_MPS = 0.1
 # AC-MPC box-catch's own contact surface (left/right_catch_pad in
 # ffw_sg2.xml), separate from left/right_squeeze_pad so box_squeeze and the
 # bimanual handle-grasp demo (which use the squeeze pads/ee_site unmodified)
@@ -225,11 +240,15 @@ _DIAGNOSTIC_MODE_PHASE = {
 # secure friction grip. Once actually touching (CAPTURE onward), there is no
 # reason to still weight exact-contact-surface tracking anywhere near
 # compression: raised compression to dominate grasp instead.
+# HOLD's object weight is 60 rather than 18 so the two-pad midpoint resists
+# drift after capture. It recovered two unstable-motion failures on the
+# 50-seed full stage (success 0.58->0.62, unsafe unchanged at 0.08) and one
+# on the disjoint 30-seed holdout (0.567->0.600, unsafe unchanged at 0.067).
 _BOX_CATCH_PHASE_PRIORS = (
     (30.0, 250.0, 0.05, 4.0, 0.4),   # INTERCEPT
     (30.0, 250.0, 1.5, 3.0, 0.5),    # PRE_IMPACT
     (16.0, 40.0, 55.0, 1.5, 1.0),    # CAPTURE
-    (18.0, 20.0, 65.0, 2.0, 1.5),    # HOLD
+    (60.0, 20.0, 65.0, 2.0, 1.5),    # HOLD
 )
 
 
@@ -238,17 +257,6 @@ class AcmpcBoxCatchConfig:
     seed: int = 7
     device: str = "auto"
     online_learning: bool = True
-    # Distance left_catch_pad/right_catch_pad are mounted further along
-    # local-x than left_ee/right_ee (see ffw_sg2.xml) -- added to
-    # pad_offset_scalar so the tracked ee point's target moves out by the
-    # same amount the catch pad is mounted in, keeping the pad's actual
-    # contact point calibrated correctly. Measured directly from forward
-    # kinematics at the home posture (mj_forward, LEFT_HOME_Q/RIGHT_HOME_Q):
-    # ||site_xpos[left_catch_pad_site] - site_xpos[left_ee]|| = 0.0386 m
-    # (and symmetrically for right), almost purely along world y (the grip
-    # separation axis) -- not the previous 0.0441, which over-corrected the
-    # standoff by 5.5mm relative to the model's actual geometry.
-    catch_pad_standoff: float = 0.0386
     # 0.08 (the handle-grasp demo's default) adds ~0.14 m/s of per-step
     # Cartesian velocity noise (std * mpc_velocity_limit) -- enough on its
     # own, with zero weight updates, to occasionally break the delicate
@@ -314,6 +322,29 @@ class AcmpcBoxCatchConfig:
     # prior*[0.35, 1.65], before the hard 500.0 clamp). Unused when
     # use_prior_free_actor=True.
     weight_delta_fraction: float = 0.65
+    # Forwarded to OnlineActorCriticConfig -- see its docstring-comments.
+    # Defaults match the long-validated condition-2 behavior (exact no-op
+    # for every existing caller). The prior-free actor's exploration
+    # collapsing to log_std_min early (entropy std ~0.03 across ~2700
+    # episodes, weights barely moved from cold-start init in any phase) is
+    # the concrete motivation for exposing these here -- see
+    # acmpc_3way_ablation_condition3_status.md.
+    entropy_coef: float = 1e-3
+    log_std_min: float = -5.0
+    log_std_max: float = -1.8
+    # Forwarded to OnlineActorCriticConfig -- defaults match its own
+    # (2e-4/5e-4), exact no-op for every existing caller. Exposed because
+    # continuing online training of an already-converged prior-free
+    # checkpoint into an easier/higher-success-rate regime (long, mostly-
+    # successful episodes generate far more rollout-buffer-full update
+    # triggers per episode than the sparser updates seen during original
+    # curriculum training) can rack up 100x the update count in a fraction
+    # of the episodes and drift the actor's final layer into an unstable
+    # regime (see acmpc_paper_reproduction_reframe.md's mass-curriculum
+    # follow-up, 2026-07-31) -- a much smaller actor_lr for that continuation
+    # phase keeps each of those extra updates small.
+    actor_lr: float = 2e-4
+    critic_lr: float = 5e-4
     mpc_horizon: int = 8
     mpc_velocity_limit: float = 1.8
     # A too-small lookahead starves the impedance controller's spring force
@@ -393,6 +424,27 @@ class AcmpcBoxCatchConfig:
     viewer: bool = False
     log_path: Optional[str] = None
     checkpoint_path: Optional[str] = None
+    # Written every live_state_every control steps (qpos + sim time, as
+    # JSON) for dashboard/server.py's offscreen renderer to poll -- decouples
+    # rendering (needs its own MjModel/Renderer + a GL context) from this
+    # process, which otherwise runs headless inside a training subprocess.
+    live_state_path: Optional[str] = None
+    live_state_every: int = 10
+    # See its use-site comment (near object_mass) -- scales left/right_catch_
+    # pad's impact-phase solref time constant up for heavier-than-nominal
+    # boxes. Validated on "full" stage (50 seeds, BASE_SEED=1000, baseline
+    # phase_priors): unsafe_rate 0.300->0.140, success_rate 0.280->0.340, no
+    # regression on LOW_SPEED/WIDE_SPEED (still 0.000 unsafe). Safe range
+    # empirically found to be roughly [0.5, 2.25] for a single controlled
+    # seed (0.4 still crosses 18N; 2.5+ breaks the grip outright, box slips
+    # through) -- 1.0 sits comfortably inside that margin on both sides.
+    impact_solref_mass_gain: float = 1.0
+    # Effective torsional-friction radius for the broad 0.042 x 0.070 m
+    # catch-pad face. The shared XML's 0.02 m value cannot arrest rotation
+    # about the grip axis on randomized boxes; 0.07 m is the physical
+    # long-radius ceiling of this contact patch. Kept episode-local because
+    # the shared XML also serves the box-squeeze track.
+    catch_pad_torsional_friction: float = 0.07
     squeeze: DynamicSideSqueezeConfig = None  # type: ignore[assignment]
     # None (default) keeps the original fixed nominal box
     # (_NOMINAL_BOX_MASS/_NOMINAL_BOX_FRICTION/_NOMINAL_BOX_HALF_SIZE).
@@ -437,6 +489,50 @@ class AcmpcBoxCatchConfig:
     # the earlier phases to succeed first. "full_episode" (default) is an
     # exact no-op -- the normal far-away ballistic launch, INTERCEPT start.
     diagnostic_mode: str = "full_episode"
+    # Stage-0 ("static_grasp_bootstrap") static-grasp bootstrap. False (the
+    # default) is byte-for-byte today's behavior: box_launch_fixture is
+    # released unconditionally at setup, exactly as before. True keeps the
+    # existing weld engaged past setup and releases it only once both pads
+    # independently hold at least fixture_release_force_n (see
+    # _fixture_release_force_n / _fixture_release_conditions_met below) for
+    # fixture_release_force_dwell_s -- see run_box_catch's fixture-lifecycle
+    # block (right after `impact = limiter.update(...)`). Reuses the same
+    # box_launch_fixture weld and dynamic_box_joint qvel indexing already
+    # used (differently) elsewhere in this file and by
+    # main_dynamic_box_squeeze.py.
+    use_launch_fixture: bool = False
+    release_fixture_on_bilateral_contact: bool = False
+    # Superseded by fixture_release_force_dwell_s -- a simple contact-time
+    # dwell let contact force keep climbing (against the rigid weld) well
+    # past what's actually needed to support the box, observed reaching
+    # ~17N (vs. first_contact_force_limit=18N) before release. Kept only so
+    # existing callers that set it don't get a TypeError; no longer read by
+    # the release decision.
+    fixture_release_contact_dwell_s: float = 0.10
+    # See fixture_release_force_n's docstring -- required per-pad normal
+    # force (mu*F_L + mu*F_R >= mg with F_L=F_R=F => F_required=mg/(2*mu)),
+    # scaled by this safety factor for release-moment force dip, L/R
+    # imbalance, and contact-force noise.
+    fixture_release_force_safety_factor: float = 1.3
+    fixture_release_force_dwell_s: float = 0.03
+    fixture_release_timeout_s: float = 2.0
+    zero_box_velocity_before_fixture_release: bool = True
+    # Stage-0-only knob (see acmpc/stage0_fixture_height_experiment.py for
+    # the 0/1/2/3/4/4.5/5/5.5/6cm sweep this default is chosen from):
+    # shifts where box_launch_fixture holds the box before release,
+    # positive = higher. Applied by writing model.eq_data[fixture_id][5]
+    # (the weld's local z relpos component -- confirmed empirically:
+    # settled box z = nominal - eq_data[5], so subtracting the offset
+    # raises the box). Inert (no-op) whenever use_launch_fixture=False,
+    # which is every existing caller and every non-Stage-0 curriculum stage
+    # -- this default only takes effect for static_grasp_bootstrap.
+    # 4.0cm: post-release bilateral contact held 6.55s (never fully lost),
+    # HOLD phase reached, first-contact peak 13.78N (comfortably under the
+    # 18N limit). 4.5cm was comparable but with a higher peak (14.11N); 5cm+
+    # collapsed sharply (contact lost again in ~0.1s, peak rose to 17-18.7N,
+    # 5.5cm actually exceeded the 18N limit) -- 4.0cm sits in the middle of
+    # the validated safe/effective window (2-4.5cm), not at either edge.
+    stage0_fixture_box_z_offset_m: float = 0.04
 
     def __post_init__(self) -> None:
         if self.diagnostic_mode not in DIAGNOSTIC_MODES:
@@ -457,11 +553,7 @@ class AcmpcBoxCatchConfig:
         ):
             raise ValueError(
                 "squeeze.box_half_y must match domain_parameters.half_size[1] "
-                "-- pad_offset_scalar (the pad-separation target) assumes a "
-                "fixed grip-axis half-size, so randomization curricula must "
-                "keep the Y half-size close to the configured nominal (this "
-                "is why default_curriculum()'s stages only vary "
-                "axis_scale[1] by a few percent)"
+                "-- the catch-pad target uses that grip-axis half-size"
             )
 
 
@@ -558,6 +650,25 @@ class BoxCatchSummary:
     hold_force_violation_fraction: float
     hold_speed_violation_fraction: float
     hold_angular_violation_fraction: float
+    # Stage-0 static-grasp-bootstrap fixture lifecycle (see
+    # AcmpcBoxCatchConfig.use_launch_fixture). All defaults are the no-op
+    # values for every existing (use_launch_fixture=False) caller.
+    fixture_enabled: bool = False
+    fixture_released: bool = False
+    fixture_release_time_s: Optional[float] = None
+    bilateral_contact_duration_at_release_s: float = 0.0
+    pre_release_peak_contact_force_n: float = 0.0
+    post_release_peak_contact_force_n: float = 0.0
+    post_release_hold_duration_s: float = 0.0
+    # Force-based release criterion (see _fixture_release_force_n /
+    # _fixture_release_conditions_met). fixture_release_force_threshold_n is
+    # set at episode setup whenever use_launch_fixture=True (even if release
+    # never happens); the two per-pad force fields are NaN unless released.
+    fixture_release_force_threshold_n: float = 0.0
+    fixture_release_left_force_n: float = float("nan")
+    fixture_release_right_force_n: float = float("nan")
+    fixture_release_force_dwell_s: float = 0.0
+    fixture_release_force_safety_factor: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -603,6 +714,10 @@ def compute_episode_funnel(
         failure_category = "viewer closed"
     elif "emergency" in reason:
         failure_category = "emergency force"
+    elif "fixture release force threshold exceeds" in reason:
+        failure_category = "fixture release force threshold unsafe"
+    elif "fixture release timeout" in reason:
+        failure_category = "fixture release timeout"
     elif not reached_pre_impact or not first_contact_detected:
         # Covers both never leaving INTERCEPT and reaching PRE_IMPACT but
         # the box crossing the interception-workspace boundary before any
@@ -652,6 +767,210 @@ def _require_id(model: mujoco.MjModel, kind: mujoco.mjtObj, name: str) -> int:
     if value < 0:
         raise ValueError(f"MuJoCo object not found: {name}")
     return int(value)
+
+
+def _site_transform(data: mujoco.MjData, site_id: int) -> np.ndarray:
+    return make_transform(
+        data.site_xpos[site_id],
+        data.site_xmat[site_id].reshape(3, 3),
+    )
+
+
+def _ee_target_for_pad(
+    pad_position: np.ndarray,
+    pad_rotation: np.ndarray,
+    ee_to_pad: np.ndarray,
+) -> np.ndarray:
+    """Convert a desired catch-pad pose into the exact tracked EE pose."""
+
+    return make_transform(pad_position, pad_rotation) @ transform_inverse(ee_to_pad)
+
+
+def _missing_normal_force_wrench(
+    requested_force: float,
+    measured_force: float,
+    inward: np.ndarray,
+) -> np.ndarray:
+    """Return an inward-only [torque; force] grip-deficit wrench."""
+
+    return np.concatenate(
+        [
+            np.zeros(3),
+            np.asarray(inward, dtype=float).reshape(3)
+            * max(0.0, float(requested_force) - float(measured_force)),
+        ]
+    )
+
+
+def _relative_pad_closing_speed(
+    left_velocity: np.ndarray,
+    right_velocity: np.ndarray,
+    box_velocity: np.ndarray,
+    y_axis: np.ndarray,
+) -> float:
+    """Return the fastest inward pad-to-box normal speed."""
+
+    return max(
+        0.0,
+        float(np.dot(np.asarray(left_velocity) - box_velocity, -y_axis)),
+        float(np.dot(np.asarray(right_velocity) - box_velocity, y_axis)),
+    )
+
+
+def _normal_force_feedback_gain(box_half_y: float) -> float:
+    return 1.5 if float(box_half_y) >= 1.1 * _NOMINAL_BOX_HALF_SIZE[1] else 1.0
+
+
+def _capture_speed_limit(box_half_y: float, configured_limit: float) -> float:
+    return (
+        max(float(configured_limit), 0.30)
+        if _normal_force_feedback_gain(box_half_y) > 1.0
+        else float(configured_limit)
+    )
+
+
+def _fixture_release_force_n(
+    object_mass: float, object_friction: float, safety_factor: float
+) -> float:
+    """Per-pad normal force needed for both pads to support the box against
+    gravity without slipping: mu*F_L + mu*F_R >= mg, F_L=F_R=F =>
+    F_required = mg/(2*mu), scaled by safety_factor. Same formula shape as
+    `required_grip_force` (run_box_catch, strict-hold criterion) but a
+    separate named quantity -- different safety factor
+    (fixture_release_force_safety_factor vs. strict_grip_force_margin), and
+    computed at fixture-release time rather than for the post-release
+    strict-hold check."""
+
+    return float(
+        safety_factor * object_mass * _GRAVITY_MPS2 / (2.0 * object_friction)
+    )
+
+
+def _ttc_from_velocity(
+    raw_vx: float, catch_plane_x: float, position_x: float
+) -> tuple[float, bool]:
+    """Raw (unclipped) TTC and its validity, kept separate on purpose (see
+    _MIN_MEANINGFUL_APPROACH_SPEED_MPS's docstring): a near-zero or
+    positive vx is not a real approach, regardless of what the division
+    happens to produce, so it must never be floored/substituted into a
+    plausible-looking number that then satisfies a phase-transition gate
+    for the wrong reason."""
+
+    if raw_vx < -_MIN_MEANINGFUL_APPROACH_SPEED_MPS:
+        ttc_raw = (catch_plane_x - position_x) / raw_vx
+    else:
+        ttc_raw = float("nan")
+    valid = bool(np.isfinite(ttc_raw) and ttc_raw >= 0.0)
+    return ttc_raw, valid
+
+
+def _enter_preimpact(
+    *,
+    prediction_confident: bool,
+    remaining_ttc_valid: bool,
+    remaining_ttc: float,
+    ttc_soften_window_s: float,
+    pad_box_surface_distance_m: float,
+    precontact_distance: float,
+    left_contact_active: bool,
+    right_contact_active: bool,
+) -> bool:
+    """INTERCEPT -> PRE_IMPACT: valid-TTC anticipation, pad-surface
+    proximity, or (fallback) real contact already happening -- a phase can
+    never stay INTERCEPT while a pad is actually touching the box."""
+
+    ttc_requests = bool(
+        prediction_confident and remaining_ttc_valid and remaining_ttc <= ttc_soften_window_s
+    )
+    pad_requests = bool(pad_box_surface_distance_m <= precontact_distance)
+    contact_requests = bool(left_contact_active or right_contact_active)
+    return bool(ttc_requests or pad_requests or contact_requests)
+
+
+def _stage0_strict_stable_contact(
+    *,
+    strict_force_ok: bool,
+    strict_speed_ok: bool,
+    strict_angular_ok: bool,
+    use_launch_fixture: bool,
+) -> bool:
+    """The success condition itself. Stage 0 (use_launch_fixture=True)'s
+    confirmed research definition is force+linear-speed only -- angular
+    velocity is diagnostic-only there (see angular_speed_exceeded_
+    diagnostic) and never gates the timer. Every other condition/stage
+    keeps requiring strict_angular_ok too, exactly as before this change."""
+
+    if use_launch_fixture:
+        return strict_force_ok and strict_speed_ok
+    return strict_force_ok and strict_speed_ok and strict_angular_ok
+
+
+def _stable_hold_reset_reason(
+    *,
+    phase_is_hold: bool,
+    fixture_gate_ok: bool,
+    left_active: bool,
+    right_active: bool,
+    left_force_n: float,
+    right_force_n: float,
+    required_grip_force_n: float,
+    strict_grip_force_max_n: float,
+    linear_speed_ok: bool,
+) -> str:
+    """Classify exactly why stable_hold_timer would reset this step, using
+    ONLY the actual Stage-0 success conditions (force + linear speed --
+    angular velocity is diagnostic-only, see angular_speed_exceeded_
+    diagnostic, and must never appear here) -- "" means every success
+    condition held (no reset; may still show an angular diagnostic flag
+    alongside it, which is not a reset by itself)."""
+
+    if not phase_is_hold:
+        return "wrong_phase"
+    if not fixture_gate_ok:
+        return "fixture_not_released"
+    reasons = []
+    if not left_active:
+        reasons.append("left_contact_lost")
+    if not right_active:
+        reasons.append("right_contact_lost")
+    if left_active and left_force_n < required_grip_force_n:
+        reasons.append("left_force_below_required")
+    if right_active and right_force_n < required_grip_force_n:
+        reasons.append("right_force_below_required")
+    if (left_active and left_force_n > strict_grip_force_max_n) or (
+        right_active and right_force_n > strict_grip_force_max_n
+    ):
+        reasons.append("force_above_maximum")
+    if not linear_speed_ok:
+        reasons.append("linear_speed_exceeded")
+    if not reasons:
+        return ""
+    return reasons[0] if len(reasons) == 1 else "multiple_success_conditions"
+
+
+def _fixture_release_conditions_met(contact, force_threshold_n: float, emergency: bool) -> bool:
+    """Both pads independently at/above force_threshold_n -- an average or
+    summed force can't satisfy this, so a one-sided grip never releases the
+    fixture. `contact` is a `control.squeeze.pad_contact.BilateralPadContact`
+    (duck-typed here to avoid importing the type just for a hint)."""
+
+    return bool(
+        contact.left.active
+        and contact.right.active
+        and contact.left.normal_force >= force_threshold_n
+        and contact.right.normal_force >= force_threshold_n
+        and not emergency
+    )
+
+
+def _dump_live_state(path: str, model: mujoco.MjModel, data: mujoco.MjData) -> None:
+    """Write qpos/time for an external offscreen renderer (dashboard/server.py)
+    to pick up. Write-then-rename keeps a concurrent reader from ever seeing a
+    half-written file."""
+    tmp = f"{path}.tmp"
+    with open(tmp, "w") as f:
+        json.dump({"time": float(data.time), "qpos": data.qpos.tolist()}, f)
+    os.replace(tmp, path)
 
 
 def _limit_norm(vector: np.ndarray, maximum: float) -> np.ndarray:
@@ -894,6 +1213,7 @@ def run_box_catch(
     *,
     wandb_logger: Optional[WandbLogger] = None,
     global_step_start: int = 0,
+    rollout_buffer: Optional[ACMPCRolloutBuffer] = None,
 ) -> BoxCatchSummary:
     config = config or AcmpcBoxCatchConfig()
     # A caller that tracks W&B across many episodes (e.g. the curriculum
@@ -903,6 +1223,18 @@ def run_box_catch(
     # scoped to this single episode.
     owns_wandb_logger = wandb_logger is None
     cfg = config.squeeze
+    # DynamicSideSqueezeConfig's 0.30 default is for a conveyor-fed box.
+    # This controller can drive each pad inward near its 0.80 m/s reach
+    # limit, so 0.30 would overstate the squared severity and pin the impact
+    # gains at their minima. The speed below is the measured pad-to-box
+    # normal closing speed; 1.0 keeps it in the useful adaptive range.
+    cfg.relative_normal_speed_limit = 1.0
+    # Reuse the rotating-grasp force calibration and add enough rotational
+    # authority to arrest the catch pad's dominant normal-axis spin. On the
+    # full 50-seed set this changed success 42->43 with unsafe still 0; the
+    # disjoint 30-seed holdout stayed 26/30 with unsafe 0.
+    cfg.minimum_hold_force_calibration = 5.5
+    cfg.rotational_stiffness = 80.0
     rng = np.random.default_rng(cfg.random_seed)
     sampled_launch_velocity = rng.uniform(cfg.launch_velocity_low, cfg.launch_velocity_high)
     launch_position = resolve_ballistic_launch_position(cfg, sampled_launch_velocity)
@@ -960,18 +1292,36 @@ def run_box_catch(
     box_qpos_address = int(model.jnt_qposadr[box_joint_id])
     box_dof_address = int(model.jnt_dofadr[box_joint_id])
     fixture_id = _require_id(model, mujoco.mjtObj.mjOBJ_EQUALITY, "box_launch_fixture")
+    if config.use_launch_fixture and config.stage0_fixture_box_z_offset_m:
+        model.eq_data[fixture_id][5] -= config.stage0_fixture_box_z_offset_m
     pad_ids = {
         name: _require_id(model, mujoco.mjtObj.mjOBJ_GEOM, f"{name}_squeeze_pad")
         for name in ("left", "right")
     }
     _disable_duplicate_end_effector_collisions(model, set(pad_ids.values()))
-    pad_box_pair_ids = tuple(
-        _require_id(model, mujoco.mjtObj.mjOBJ_PAIR, name)
-        for name in ("dynamic_left_pad_box", "dynamic_right_pad_box")
+    # The impact/hold contact-softness ramp below used to target
+    # dynamic_left_pad_box/dynamic_right_pad_box -- a <pair> for
+    # left/right_squeeze_pad, a *different* geom (see CATCH_PAD_COLLISION_BIT's
+    # comment above) that never actually contacts the box in this scenario.
+    # That made the whole ramp a no-op: left/right_catch_pad's own geom_solref
+    # (ffw_sg2.xml, priority=1 so it wins outright over the box's) governed
+    # the real contact the entire episode, fixed at the XML's flat 0.070
+    # regardless of phase or box mass. catch_pad_gids below is the fix.
+    catch_pad_gids = tuple(
+        _require_id(model, mujoco.mjtObj.mjOBJ_GEOM, f"{name}_catch_pad")
+        for name in ("left", "right")
     )
-    impact_pair_time_constants = {
-        pair_id: float(model.pair_solref[pair_id, 0]) for pair_id in pad_box_pair_ids
+    catch_pad_site_ids = {
+        name: _require_id(model, mujoco.mjtObj.mjOBJ_SITE, f"{name}_catch_pad_site")
+        for name in ("left", "right")
     }
+    for gid in catch_pad_gids:
+        model.geom_friction[gid, 1] = config.catch_pad_torsional_friction
+        if config.viewer:
+            # Collision-debug groups are hidden by the default viewer. Make
+            # the box-catch pads unmistakable without changing headless runs.
+            model.geom_group[gid] = 0
+            model.geom_rgba[gid] = (1.0, 0.25, 0.0, 1.0)
 
     data.qpos[box_qpos_address : box_qpos_address + 3] = launch_position
     mujoco.mj_forward(model, data)
@@ -995,6 +1345,16 @@ def run_box_catch(
     }
     desired_transforms = {
         name: get_ee_transform(data, arms[name]).copy() for name in ("left", "right")
+    }
+    # The catch pad is both translated and rotated relative to the tracked
+    # *_ee site. A home-pose world-Y scalar only approximates that rigid
+    # transform at one orientation and leaves large randomized boxes with a
+    # persistent gap. Preserve the exact transform and solve the desired EE
+    # pose from the desired pad pose at every control step.
+    ee_to_catch_pad = {
+        name: transform_inverse(desired_transforms[name])
+        @ _site_transform(data, catch_pad_site_ids[name])
+        for name in ("left", "right")
     }
     # The MPC/actor only replan every control_stride physics substeps
     # (10 ms), but a fast-closing box can build a large contact force within
@@ -1046,6 +1406,11 @@ def run_box_catch(
             maximum_cumulative_actor_delta=config.maximum_cumulative_actor_delta,
             use_prior_free_actor=config.use_prior_free_actor,
             prior_free_initial_weights=config.prior_free_initial_weights,
+            entropy_coef=config.entropy_coef,
+            log_std_min=config.log_std_min,
+            log_std_max=config.log_std_max,
+            actor_lr=config.actor_lr,
+            critic_lr=config.critic_lr,
         ),
     )
     if config.checkpoint_path and Path(config.checkpoint_path).exists():
@@ -1066,17 +1431,6 @@ def run_box_catch(
         [parameter.detach().cpu().numpy().ravel() for parameter in learner.actor.parameters()]
     )
 
-    # left_catch_pad/right_catch_pad sit 0.0441m further along local-x than
-    # left_ee/right_ee (the tracked control point) -- see the geom comments
-    # in ffw_sg2.xml. Since ee itself (not the pad) is what gets driven to
-    # pad_offset_scalar, ee's own target must be pushed out by that same
-    # 0.0441m so the catch pad (mounted further in) ends up at the intended
-    # box-half-y + standoff contact point instead of ee itself landing there
-    # and the catch pad overshooting into the box before ee's endpoint_error
-    # reaches zero.
-    pad_offset_scalar = (
-        cfg.box_half_y + cfg.pad_half_thickness + cfg.precontact_gap + config.catch_pad_standoff
-    )
     if config.domain_parameters is not None:
         object_mass = config.domain_parameters.mass
         object_friction = config.domain_parameters.friction
@@ -1085,6 +1439,41 @@ def run_box_catch(
         object_mass = _NOMINAL_BOX_MASS
         object_friction = _NOMINAL_BOX_FRICTION
         half_x, _, half_z = _NOMINAL_BOX_HALF_SIZE
+    pad_half_x = float(model.geom_size[catch_pad_gids[0], 1])
+    pad_half_z = float(model.geom_size[catch_pad_gids[0], 2])
+    contact_face_area = 4.0 * min(half_x, pad_half_x) * min(half_z, pad_half_z)
+    # Boxes at least 10% wider than nominal leave less capture margin before
+    # the arms settle. A modest deficit-only boost keeps them centered during
+    # first touch without raising force on the rest of the domain. Retaining
+    # up to 0.30 m/s of captured motion also avoids stopping a wide, heavy
+    # box tangentially in one step.
+    # ponytail: this threshold is tied to the current curriculum width range;
+    # replace it with a continuous measured-response schedule if that expands.
+    force_feedback_gain = _normal_force_feedback_gain(cfg.box_half_y)
+    maximum_capture_speed = _capture_speed_limit(
+        cfg.box_half_y, cfg.maximum_capture_speed
+    )
+    # Scales left/right_catch_pad's own solref time constant up by how much
+    # heavier than nominal the box is (a heavier box carries proportionally
+    # more momentum into the same mass-blind contact, verified directly:
+    # 0.35/0.50/0.70 kg at a fixed 1.4 m/s approach measured peak
+    # first-contact force 12.92/15.56/21.47N with the flat XML default,
+    # 0.70kg alone crossing the 18N ImpactSafe limit). Only scales *up* for
+    # heavier-than-nominal boxes -- lighter ones already sit safely under
+    # the limit at the XML default. Applied for the whole episode, not just
+    # the whole episode; the measured-force feedback below supplies any
+    # missing hold force without a discontinuous contact-parameter switch.
+    impact_time_constants = {
+        gid: float(model.geom_solref[gid, 0])
+        * (1.0 + config.impact_solref_mass_gain * max(0.0, object_mass / _NOMINAL_BOX_MASS - 1.0))
+        for gid in catch_pad_gids
+    }
+    # Contact parameters must be installed before the first collision is
+    # solved. Applying them only after limiter detects contact is one physics
+    # step too late for the first-substep force peak this scaling targets.
+    for gid in catch_pad_gids:
+        model.geom_solref[gid, 0] = impact_time_constants[gid]
+        model.geom_solref[gid, 1] = cfg.hold_contact_damping_ratio
 
     required_grip_force = (
         config.strict_grip_force_margin
@@ -1092,8 +1481,54 @@ def run_box_catch(
         * _GRAVITY_MPS2
         / (2.0 * object_friction)
     )
+    minimum_hold_force = float(
+        np.clip(
+            minimum_symmetric_squeeze_force(
+                mass=object_mass,
+                friction=object_friction,
+                gravity=gravity,
+                calibration_factor=cfg.minimum_hold_force_calibration,
+            ),
+            cfg.minimum_contact_force,
+            cfg.maximum_hold_normal_force,
+        )
+    )
 
-    data.eq_active[fixture_id] = 0
+    # Stage-0 static-grasp bootstrap: keep box_launch_fixture engaged past
+    # setup instead of releasing it unconditionally -- see the per-step
+    # dwell/release block below (right after `impact = limiter.update(...)`).
+    # use_launch_fixture=False (default) is byte-for-byte today's behavior.
+    fixture_active = bool(config.use_launch_fixture)
+    fixture_released = False
+    bilateral_contact_duration = 0.0
+    fixture_release_force_duration = 0.0
+    fixture_release_time_s: Optional[float] = None
+    fixture_release_left_force_n = float("nan")
+    fixture_release_right_force_n = float("nan")
+    pre_release_peak_contact_force_n = 0.0
+    post_release_peak_contact_force_n = 0.0
+    fixture_release_force_n = _fixture_release_force_n(
+        object_mass, object_friction, config.fixture_release_force_safety_factor
+    )
+    # Don't silently clip: a domain sample (heavy + low-friction box) can
+    # push the required per-pad force above first_contact_force_limit
+    # itself, meaning release could never be safely reached at all -- flag
+    # it loudly and let the timeout path fail with a distinct, honest
+    # reason rather than pretending the release attempt is meaningful.
+    fixture_release_force_exceeds_safety_limit = bool(
+        fixture_active and fixture_release_force_n > cfg.first_contact_force_limit
+    )
+    if fixture_release_force_exceeds_safety_limit:
+        print(
+            f"[Stage 0] WARNING: fixture release force threshold "
+            f"({fixture_release_force_n:.1f} N, mass={object_mass:.3f} kg, "
+            f"friction={object_friction:.3f}) exceeds first-contact safety limit "
+            f"({cfg.first_contact_force_limit:.1f} N) -- release will not be "
+            f"attempted; episode will fail at timeout.",
+            flush=True,
+        )
+    if not fixture_active:
+        data.eq_active[fixture_id] = 0
     if config.diagnostic_mode in _DIAGNOSTIC_MODE_PHASE:
         # Reads the arms' current (home) pose to place the box relative to
         # the real catch pads -- see build_diagnostic_state's docstring.
@@ -1103,10 +1538,16 @@ def run_box_catch(
         data.qpos[box_qpos_address : box_qpos_address + 3] = diagnostic_position
         data.qvel[box_dof_address : box_dof_address + 3] = diagnostic_velocity
     else:
-        data.qvel[box_dof_address : box_dof_address + 3] = launch_velocity
+        # Box isn't launched yet while the fixture holds it -- zero, not
+        # launch_velocity (that only applies once actually released).
+        data.qvel[box_dof_address : box_dof_address + 3] = (
+            0.0 if fixture_active else launch_velocity
+        )
         initial_phase = CatchPhase.INTERCEPT
     mujoco.mj_forward(model, data)
     predictor.reset(initial_velocity=data.qvel[box_dof_address : box_dof_address + 3].copy())
+    if fixture_active:
+        print("[Stage 0] Launch fixture enabled.", flush=True)
 
     if config.diagnostic_mode == "test_hold":
         # The home arm pose alone doesn't reach the box (pads start ~0.43m
@@ -1115,10 +1556,24 @@ def run_box_catch(
         # loop uses (target_center +/- pad_offset_scalar*y_axis), so HOLD
         # starts from a real, physically-settled bilateral grip instead of
         # an unreachable box placement.
-        settle_y_axis = np.array([0.0, 1.0, 0.0])
+        settle_rotation = np.eye(3)
+        settle_y_axis = settle_rotation[:, 1]
         settle_center = diagnostic_position
+        settle_pad_offset = cfg.box_half_y + cfg.pad_half_thickness
+        settle_pad_rotations = {
+            "left": np.column_stack(
+                [settle_y_axis, -settle_rotation[:, 0], settle_rotation[:, 2]]
+            ),
+            "right": np.column_stack(
+                [-settle_y_axis, settle_rotation[:, 0], settle_rotation[:, 2]]
+            ),
+        }
         for name, sign in (("left", 1.0), ("right", -1.0)):
-            desired_transforms[name][:3, 3] = settle_center + sign * pad_offset_scalar * settle_y_axis
+            desired_transforms[name] = _ee_target_for_pad(
+                settle_center + sign * settle_pad_offset * settle_y_axis,
+                settle_pad_rotations[name],
+                ee_to_catch_pad[name],
+            )
         for _ in range(int(0.5 / dt)):
             # Pin the box in place while the arms close in -- otherwise it
             # free-falls away from the (fixed-height) target during the
@@ -1158,6 +1613,7 @@ def run_box_catch(
     capture_center: Optional[np.ndarray] = None
     capture_reference_velocity: Optional[np.ndarray] = None
     capture_rotation: Optional[np.ndarray] = None
+    requested_force = 0.0
     failure_reason = ""
     previous_control_positions = np.concatenate(
         [desired_transforms["left"][:3, 3], desired_transforms["right"][:3, 3]]
@@ -1187,7 +1643,13 @@ def run_box_catch(
     blend_onehot_target = _initial_onehot.copy()
     current_soft_onehot = _initial_onehot.copy()
 
-    rollout = ACMPCRolloutBuffer()
+    # A caller passing its own buffer (e.g. the curriculum loop accumulating
+    # rollout across several episodes' worth of distinct domain samples
+    # before an update) owns its lifetime -- this function must not force a
+    # partial-buffer flush at episode end in that case, only the caller
+    # knows when it's actually done with it.
+    owns_rollout_buffer = rollout_buffer is None
+    rollout = rollout_buffer if rollout_buffer is not None else ACMPCRolloutBuffer()
     updates: list[PPOUpdateSummary] = []
     total_transitions = 0
     total_reward = 0.0
@@ -1252,15 +1714,8 @@ def run_box_catch(
             )
             impact = limiter.update(time_s, contact)
             if impact.first_contact_time_s is not None:
-                # The XML pair is deliberately soft during impact (absorbs
-                # the initial hit). Left this soft for the whole grip, the
-                # box can bounce/oscillate against a springy contact instead
-                # of being held -- this was missing here entirely (present
-                # in main_dynamic_box_squeeze.py) and is a strong candidate
-                # for the observed spin-and-escape right after bilateral
-                # contact. Ramp to a firmer hold contact once the
-                # force-limited window ends, smoothly rather than switching
-                # discontinuously.
+                # contact_blend is used by the Cartesian impedance K ramp;
+                # geom_solref stays at the pre-contact mass-scaled value.
                 transition_elapsed = max(
                     0.0,
                     time_s - impact.first_contact_time_s - cfg.first_contact_window_s,
@@ -1268,14 +1723,74 @@ def run_box_catch(
                 contact_blend = _smoothstep(
                     transition_elapsed / max(cfg.hold_contact_transition_s, dt)
                 )
-                for pair_id in pad_box_pair_ids:
-                    model.pair_solref[pair_id, 0] = (
-                        (1.0 - contact_blend) * impact_pair_time_constants[pair_id]
-                        + contact_blend * cfg.hold_contact_time_constant_s
-                    )
-                    model.pair_solref[pair_id, 1] = cfg.hold_contact_damping_ratio
-
             if step % control_stride == 0:
+                phase_transition_reason = ""
+                if fixture_active and not fixture_released:
+                    if contact.bilateral:
+                        if bilateral_contact_duration == 0.0:
+                            print("[Stage 0] Bilateral contact detected.", flush=True)
+                        bilateral_contact_duration += control_dt
+                    else:
+                        bilateral_contact_duration = 0.0
+                    both_pads_support_box = _fixture_release_conditions_met(
+                        contact, fixture_release_force_n, impact.emergency
+                    )
+                    if both_pads_support_box:
+                        if fixture_release_force_duration == 0.0:
+                            print(
+                                f"[Stage 0] Both pads at/above required force "
+                                f"({fixture_release_force_n:.1f} N). Starting force dwell timer.",
+                                flush=True,
+                            )
+                        fixture_release_force_duration += control_dt
+                    else:
+                        fixture_release_force_duration = 0.0
+                    if (
+                        config.release_fixture_on_bilateral_contact
+                        and fixture_release_force_duration >= config.fixture_release_force_dwell_s
+                        and not fixture_release_force_exceeds_safety_limit
+                    ):
+                        print(
+                            f"[Stage 0] Fixture release force dwell satisfied: "
+                            f"{fixture_release_force_duration:.3f} s "
+                            f"(L={contact.left.normal_force:.1f} N, R={contact.right.normal_force:.1f} N, "
+                            f"threshold={fixture_release_force_n:.1f} N).",
+                            flush=True,
+                        )
+                        pre_release_peak_contact_force_n = impact.peak_first_contact_force
+                        fixture_release_left_force_n = contact.left.normal_force
+                        fixture_release_right_force_n = contact.right.normal_force
+                        if config.zero_box_velocity_before_fixture_release:
+                            data.qvel[box_dof_address : box_dof_address + 3] = 0.0
+                            data.qvel[box_dof_address + 3 : box_dof_address + 6] = 0.0
+                        data.eq_active[fixture_id] = 0
+                        mujoco.mj_forward(model, data)
+                        fixture_released = True
+                        fixture_release_time_s = time_s
+                        phase_transition_reason = "fixture_release"
+                        print(
+                            f"[Stage 0] Launch fixture released at episode time {time_s:.3f} s.",
+                            flush=True,
+                        )
+                        print("[Stage 0] Load-bearing hold started.", flush=True)
+                    elif time_s >= config.fixture_release_timeout_s:
+                        phase = CatchPhase.FAILED
+                        if fixture_release_force_exceeds_safety_limit:
+                            failure_reason = (
+                                "fixture release force threshold exceeds first-contact "
+                                "safety limit"
+                            )
+                        else:
+                            failure_reason = (
+                                "fixture release timeout: bilateral contact was not achieved"
+                            )
+                        print(f"[Stage 0] {failure_reason}.", flush=True)
+                elif fixture_released:
+                    post_release_peak_contact_force_n = max(
+                        post_release_peak_contact_force_n,
+                        contact.left.normal_force,
+                        contact.right.normal_force,
+                    )
                 prediction = predictor.update(time_s, box_position)
                 # The MPC's own horizon lookahead is only
                 # horizon*dt (~tens of ms) -- far shorter than the ~0.5 s
@@ -1294,15 +1809,44 @@ def run_box_catch(
                 # positive time-to-plane -- do not negate velocity_x here
                 # (that flips the sign and was clamping every estimate to
                 # the minimum_intercept_ttc floor).
-                remaining_ttc = float(
-                    np.clip(
-                        (cfg.catch_plane_x - prediction.position[0])
-                        / min(prediction.velocity[0], -1e-3),
-                        cfg.minimum_intercept_ttc,
-                        cfg.maximum_intercept_ttc,
-                    )
+                # TTC value vs. validity, kept separate (regression fix): a
+                # near-zero/wrong-signed closing velocity (a box that isn't
+                # actually approaching yet -- stationary/fixture-held, or
+                # settling noise) used to get silently floored to -1e-3 and
+                # clipped into a plausible-looking but meaningless number,
+                # which then satisfied the PRE_IMPACT TTC gate below for the
+                # wrong reason (or, in an earlier fix attempt, was pinned to
+                # maximum_intercept_ttc to dodge that, which permanently
+                # disabled the TTC gate instead). Neither hack is needed once
+                # the gate itself only trusts remaining_ttc when
+                # remaining_ttc_valid -- see enter_preimpact below.
+                _ttc_raw, remaining_ttc_valid = _ttc_from_velocity(
+                    float(prediction.velocity[0]), cfg.catch_plane_x, float(prediction.position[0])
                 )
-                intercept_center = prediction.position_after(remaining_ttc)
+                # Still need *some* finite value to feed position_after/
+                # tracking_time_constant below regardless of validity (target
+                # tracking has to aim somewhere every step) -- this fallback
+                # is never used to satisfy the phase-transition gate itself.
+                remaining_ttc = float(
+                    np.clip(_ttc_raw, cfg.minimum_intercept_ttc, cfg.maximum_intercept_ttc)
+                    if remaining_ttc_valid
+                    else cfg.maximum_intercept_ttc
+                )
+                # Only extrapolate a ballistic arc forward when we actually
+                # trust the velocity estimate driving it -- otherwise
+                # position_after still applies gravity unconditionally over
+                # the (now-large, cfg.maximum_intercept_ttc) fallback window,
+                # projecting the target ~meters below the box's real,
+                # roughly-stationary position (confirmed via trace: this was
+                # the second half of the INTERCEPT-stuck regression, not
+                # just the phase gate). With no trustworthy velocity, track
+                # where the box actually is right now instead of projecting
+                # a fall that isn't happening.
+                intercept_center = (
+                    prediction.position_after(remaining_ttc)
+                    if remaining_ttc_valid
+                    else prediction.position.copy()
+                )
 
                 # Snapshot the captured reference (both position AND
                 # rotation) once, exactly at the *instant* of first contact --
@@ -1336,7 +1880,32 @@ def run_box_catch(
                 if capture_center is None and impact.first_contact_time_s is not None:
                     capture_center = box_position.copy()
                     capture_reference_velocity = _limit_norm(
-                        box_velocity, cfg.maximum_capture_speed
+                        box_velocity, maximum_capture_speed
+                    )
+                    capture_rotation = box_rotation.copy()
+                elif (
+                    capture_center is not None
+                    and not contact.bilateral
+                    and not impact.in_first_contact_window
+                ):
+                    # The catch didn't actually arrest the box: bilateral
+                    # contact was lost *after* the brief compliant first-
+                    # contact window (impact.in_first_contact_window) this
+                    # freeze exists to smooth over -- confirmed via trace
+                    # (root cause B: capture_reference_velocity was
+                    # snapshotted near-zero at a fleeting first touch, then
+                    # just decayed toward zero exponentially while the box's
+                    # REAL velocity grew past -1 m/s in free-fall, so the
+                    # hands' commanded vertical velocity never exceeded
+                    # ~0.015 m/s the whole time). Re-snapshot the box's
+                    # actual live state so the reference re-tracks the real
+                    # fall instead of a stale, already-wrong one. Left alone
+                    # during in_first_contact_window so the original ringing
+                    # -avoidance behavior for a genuine, brief settle is
+                    # unchanged.
+                    capture_center = box_position.copy()
+                    capture_reference_velocity = _limit_norm(
+                        box_velocity, maximum_capture_speed
                     )
                     capture_rotation = box_rotation.copy()
 
@@ -1344,7 +1913,27 @@ def run_box_catch(
                     capture_rotation if capture_rotation is not None else box_rotation
                 )
                 y_axis = effective_rotation[:, 1]
+                if phase is CatchPhase.INTERCEPT:
+                    phase_precontact_gap = cfg.precontact_gap
+                elif phase is CatchPhase.PRE_IMPACT:
+                    gap_blend = _smoothstep(
+                        (time_s - phase_started) / max(config.phase_blend_time_s, 1e-9)
+                    )
+                    phase_precontact_gap = (1.0 - gap_blend) * cfg.precontact_gap
+                else:
+                    phase_precontact_gap = 0.0
+                pad_offset_scalar = (
+                    cfg.box_half_y + cfg.pad_half_thickness + phase_precontact_gap
+                )
                 pad_vector = pad_offset_scalar * y_axis
+                desired_pad_rotations = {
+                    "left": np.column_stack(
+                        [y_axis, -effective_rotation[:, 0], effective_rotation[:, 2]]
+                    ),
+                    "right": np.column_stack(
+                        [-y_axis, effective_rotation[:, 0], effective_rotation[:, 2]]
+                    ),
+                }
 
                 if capture_center is not None:
                     # Past the compliant first-contact window: the box is no
@@ -1359,60 +1948,20 @@ def run_box_catch(
                     capture_center = capture_center + capture_reference_velocity * control_dt
                     target_center = capture_center
                     target_velocity = capture_reference_velocity
-                elif (
-                    impact.first_contact_time_s is not None
-                    or phase in {CatchPhase.PRE_IMPACT, CatchPhase.CAPTURE}
-                ):
-                    # Inside the compliant first-contact window (or already
-                    # close enough to have entered PRE_IMPACT): contact
-                    # forces may already be acting, so the ballistic
-                    # predictor's unforced-motion extrapolation is already
-                    # wrong or about to be, but there isn't yet a stable
-                    # captured point to freeze onto either. Track the box's
-                    # live measured state directly. Switching to this at
-                    # PRE_CONTACT rather than waiting for the exact instant
-                    # of first contact also avoids a one-step discontinuity
-                    # between the ballistic prediction and the live position
-                    # right at touch, which was itself injecting a sudden
-                    # ~0.1 m Z-target jump into the pad targets. Freezing a
-                    # captured reference this early reproduces the exact
-                    # "freeze too early" bug fixed this morning in the
-                    # box-squeeze track.
-                    #
-                    # target_velocity is left None here (not the box's own
-                    # velocity, and not clipped to maximum_capture_speed --
-                    # that clip is for the post-window *arrest* target). The
-                    # required-velocity feedforward computed below already
-                    # accounts for whatever residual gap remains to this
-                    # (now live, not predicted) target in the remaining TTC,
-                    # which is what actually pulls the arm in fast enough;
-                    # using raw box_velocity here starves that pull the
-                    # moment there is still a real gap left to close.
-                    target_center = box_position
-                    target_velocity = None
-                    # remaining_ttc is "time until the box crosses
-                    # catch_plane_x" -- once we're this close/already
-                    # touching, that clock has served its purpose (or the
-                    # box has already crossed the plane, at which point the
-                    # formula degenerates and pins to the floor while the
-                    # residual gap keeps growing). Use a small fixed
-                    # tracking time constant for the required-velocity
-                    # divisor instead so the near-field correction stays
-                    # meaningful regardless of where the box sits relative
-                    # to that plane, and add the box's own (live, true)
-                    # velocity as feedforward -- a fixed-time gap-closing
-                    # term alone undershoots a target that is itself still
-                    # accelerating (falling).
-                    tracking_time_constant = 0.05
-                    velocity_feedforward_base = box_velocity
                 else:
+                    # PRE_IMPACT intentionally keeps the same predicted
+                    # intercept target as INTERCEPT. Switching to the live
+                    # box before touch produced a large target discontinuity;
+                    # actual contact freezes capture_center above on the same
+                    # control step, so no separate pre-contact live-tracking
+                    # branch is needed.
                     target_center = intercept_center
                     target_velocity = None
                     tracking_time_constant = remaining_ttc
                     velocity_feedforward_base = np.zeros(3)
 
-                left_target = target_center + pad_vector
-                right_target = target_center - pad_vector
+                left_pad_target = target_center + pad_vector
+                right_pad_target = target_center - pad_vector
                 if impact.in_first_contact_window:
                     # FirstContactForceLimiter.update() (above) only *reports*
                     # impact state -- the actual force cap comes from
@@ -1428,8 +1977,23 @@ def run_box_catch(
                     # (18 N) by 25-35% (measured 16-24 N, mean ~20.5 N) as a
                     # result, even though the catch itself still succeeded.
                     left_relief, right_relief = limiter.relief_distances(contact, impact)
-                    left_target = left_target + y_axis * left_relief
-                    right_target = right_target - y_axis * right_relief
+                    left_pad_target = left_pad_target + y_axis * left_relief
+                    right_pad_target = right_pad_target - y_axis * right_relief
+
+                desired_ee_targets = {
+                    "left": _ee_target_for_pad(
+                        left_pad_target,
+                        desired_pad_rotations["left"],
+                        ee_to_catch_pad["left"],
+                    ),
+                    "right": _ee_target_for_pad(
+                        right_pad_target,
+                        desired_pad_rotations["right"],
+                        ee_to_catch_pad["right"],
+                    ),
+                }
+                left_target = desired_ee_targets["left"][:3, 3]
+                right_target = desired_ee_targets["right"][:3, 3]
 
                 left_ee = get_ee_transform(data, arms["left"])[:3, 3]
                 right_ee = get_ee_transform(data, arms["right"])[:3, 3]
@@ -1448,15 +2012,45 @@ def run_box_catch(
                     + float(np.linalg.norm(right_ee - right_target))
                 )
                 minimum_endpoint_error = min(minimum_endpoint_error, endpoint_error)
-                relative_normal_speed = max(
-                    abs(float(np.dot(box_velocity, y_axis))), 1e-6
+                # Impact severity needs the pads' closing speed along their
+                # contact normals. The box's total ballistic speed is mostly
+                # tangent to those faces (world x/z); using its norm here
+                # made vertical fall speed pin every episode to the minimum
+                # adaptive stiffness even when the pads were closing gently.
+                relative_normal_speed = _relative_pad_closing_speed(
+                    measured_velocity[:3],
+                    measured_velocity[3:],
+                    box_velocity,
+                    y_axis,
                 )
                 impact_command = adaptive_impact_command(
                     cfg,
                     object_mass=object_mass,
-                    contact_face_area=4.0 * half_x * half_z,
+                    # The box face is not the contact patch when it is wider
+                    # or taller than the pad. Cap each tangent axis by the
+                    # real catch-pad half extent instead of letting a large
+                    # box falsely dilute impact severity.
+                    contact_face_area=contact_face_area,
                     relative_normal_speed=relative_normal_speed,
                 )
+                if impact.first_contact_time_s is not None:
+                    impact_force_target = (
+                        cfg.predictive_force_guard_ratio
+                        * cfg.first_contact_force_limit
+                    )
+                    force_blend = _smoothstep(
+                        max(
+                            0.0,
+                            time_s
+                            - impact.first_contact_time_s
+                            - cfg.first_contact_window_s,
+                        )
+                        / max(config.phase_blend_time_s, control_dt)
+                    )
+                    requested_force = (
+                        (1.0 - force_blend) * impact_force_target
+                        + force_blend * minimum_hold_force
+                    )
 
                 old_phase = phase
                 both_contact = contact.left.active and contact.right.active
@@ -1484,11 +2078,30 @@ def run_box_catch(
                 )
                 box_angular_velocity = data.qvel[box_dof_address + 3 : box_dof_address + 6]
                 strict_speed_ok = float(np.linalg.norm(box_velocity)) <= config.strict_box_speed_max_mps
+                # Always computed -- diagnostic-only for Stage 0 (see below),
+                # still a real success requirement for every other
+                # condition/stage (unchanged from before this session's
+                # Stage-0 work).
                 strict_angular_ok = (
                     float(np.linalg.norm(box_angular_velocity))
                     <= config.strict_box_angular_speed_max_radps
                 )
-                strict_stable_contact = strict_force_ok and strict_speed_ok and strict_angular_ok
+                angular_speed_exceeded_diagnostic = not strict_angular_ok
+                # Stage 0's confirmed research success definition is
+                # force+linear-speed only (StableHold_5s = bilateral
+                # contact+grip AND |v_box|<=0.05m/s) -- angular velocity is
+                # tracked (see angular_speed_exceeded_diagnostic and the
+                # HOLD3 trace) but does not gate its timer. This is
+                # deliberately scoped to use_launch_fixture (Stage 0 only,
+                # same pattern as the fixture-release hold_timer gate below)
+                # -- every other condition/stage keeps requiring
+                # strict_angular_ok exactly as before, unchanged.
+                strict_stable_contact = _stage0_strict_stable_contact(
+                    strict_force_ok=strict_force_ok,
+                    strict_speed_ok=strict_speed_ok,
+                    strict_angular_ok=strict_angular_ok,
+                    use_launch_fixture=config.use_launch_fixture,
+                )
                 strict_hold_timer = (
                     strict_hold_timer + control_dt if strict_stable_contact else 0.0
                 )
@@ -1502,45 +2115,94 @@ def run_box_catch(
                     if not strict_angular_ok:
                         hold_angular_violation_count += 1
 
-                # d_hand-box: actual hand-to-box distance (not endpoint_error,
-                # which measures hand-to-*target* -- target is intercept_center,
-                # a future predicted point the arm converges onto long before
-                # the box itself is anywhere nearby, so endpoint_error alone
-                # is not a proximity signal to the real box).
+                # d_hand-box: kept for other observations/logging (see its
+                # use elsewhere), but NO LONGER used to gate the INTERCEPT ->
+                # PRE_IMPACT transition -- it measures the EE/wrist reference
+                # frame to the box, which sits ~0.15-0.25m from the actual
+                # catch-pad contact point (the pad extends past the EE frame
+                # by design). A box already in real bilateral pad contact
+                # could never bring this below precontact_distance=0.10,
+                # which was the root cause of the INTERCEPT-stuck regression:
+                # phase never left INTERCEPT despite real contact, so
+                # CAPTURE/HOLD's cost-weight rows were never reached.
                 hand_object_distance = 0.5 * (
                     float(np.linalg.norm(left_ee - box_position))
                     + float(np.linalg.norm(right_ee - box_position))
                 )
-                if phase is CatchPhase.INTERCEPT and (
-                    (
-                        prediction.confidence >= config.precontact_confidence_min
-                        and remaining_ttc <= cfg.ttc_soften_window_s
+                # Pad-to-box-surface distance (not EE-to-box, not center-to-
+                # center): each pad's actual world site position vs. the
+                # box's near face along its own y-axis (the grasp axis --
+                # box_half_y is exactly this face's offset from center,
+                # already the convention pad_vector/BoxFaceInterceptionPlanner
+                # use elsewhere in this codebase).
+                _box_y_axis = box_rotation[:, 1]
+                _box_face_offset = cfg.box_half_y * _box_y_axis
+                left_pad_box_surface_distance_m = float(
+                    np.linalg.norm(
+                        data.site_xpos[catch_pad_site_ids["left"]] - (box_position + _box_face_offset)
                     )
-                    or hand_object_distance <= config.precontact_distance
-                ):
-                    # (c_pred >= c_min AND TTC <= T_pre) OR (d_hand-box <=
-                    # d_pre). When confidence is low (early in flight, before
-                    # BallisticBoxPredictor's velocity estimate has settled --
-                    # see control/squeeze/ballistic.py), the first clause is
-                    # always False regardless of the TTC value, so the
-                    # distance clause is the only path left -- exactly the
-                    # "distance as fallback when confidence/TTC are not
-                    # trustworthy" behavior asked for, with no extra branching
-                    # needed. In the validated primary path, confidence has
-                    # already saturated to 1.0 long before TTC<=T_pre becomes
-                    # true (saturates within ~40ms of flight start), so this
-                    # reduces to the original remaining_ttc<=ttc_soften_window_s
-                    # gate. Switching to PRE_IMPACT also swaps the tracking
-                    # target from intercept_center (continuous, TTC-based,
-                    # converges onto box_position as remaining_ttc -> 0) to
-                    # the box's raw live position -- firing that swap while
-                    # the box is still far away would snap the target
-                    # backward, which the arm would then spend the rest of
-                    # the flight failing to re-close. Because the fallback
-                    # branch above compares against the *true* box position
-                    # (not a future target), it can only trigger once the box
-                    # is genuinely close, so this discontinuity risk does not
-                    # reappear through that path either.
+                )
+                right_pad_box_surface_distance_m = float(
+                    np.linalg.norm(
+                        data.site_xpos[catch_pad_site_ids["right"]] - (box_position - _box_face_offset)
+                    )
+                )
+                pad_box_surface_distance_m = min(
+                    left_pad_box_surface_distance_m, right_pad_box_surface_distance_m
+                )
+
+                prediction_confident = prediction.confidence >= config.precontact_confidence_min
+                ttc_requests_preimpact = bool(
+                    prediction_confident
+                    and remaining_ttc_valid
+                    and remaining_ttc <= cfg.ttc_soften_window_s
+                )
+                pad_distance_requests_preimpact = bool(
+                    pad_box_surface_distance_m <= config.precontact_distance
+                )
+                contact_requests_preimpact = bool(contact.left.active or contact.right.active)
+                enter_preimpact = _enter_preimpact(
+                    prediction_confident=prediction_confident,
+                    remaining_ttc_valid=remaining_ttc_valid,
+                    remaining_ttc=remaining_ttc,
+                    ttc_soften_window_s=cfg.ttc_soften_window_s,
+                    pad_box_surface_distance_m=pad_box_surface_distance_m,
+                    precontact_distance=config.precontact_distance,
+                    left_contact_active=contact.left.active,
+                    right_contact_active=contact.right.active,
+                )
+
+                if phase is CatchPhase.INTERCEPT and enter_preimpact:
+                    # Three independent ways to justify leaving INTERCEPT,
+                    # in priority order for logging (not for correctness --
+                    # `enter_preimpact` already ORs them):
+                    #   1. ttc: valid TTC has shrunk into the soften window
+                    #      (the original, pre-contact anticipatory path).
+                    #   2. pad_distance: pads themselves (not the EE frame)
+                    #      are close to the box surface -- catches static/
+                    #      slow-closing scenarios (Stage 0) where TTC never
+                    #      validates.
+                    #   3. unilateral_contact_fallback: real contact already
+                    #      happened despite neither of the above firing --
+                    #      the hard invariant from item 6: a phase can never
+                    #      stay INTERCEPT while pads are actually touching.
+                    if ttc_requests_preimpact:
+                        phase_transition_reason = "ttc"
+                    elif pad_distance_requests_preimpact:
+                        phase_transition_reason = "pad_distance"
+                    else:
+                        phase_transition_reason = "unilateral_contact_fallback"
+                    # Switching to PRE_IMPACT also swaps the tracking target
+                    # from intercept_center (continuous, TTC-based, converges
+                    # onto box_position as remaining_ttc -> 0) to the box's
+                    # raw live position -- firing that swap while the box is
+                    # still far away would snap the target backward, which
+                    # the arm would then spend the rest of the flight failing
+                    # to re-close. The pad-distance and contact fallbacks are
+                    # both grounded in the box's *actual* current state (not
+                    # a future target), so they can only fire once the box is
+                    # genuinely close/touching -- this discontinuity risk
+                    # does not reappear through either fallback path.
                     phase = CatchPhase.PRE_IMPACT
                 elif phase is CatchPhase.PRE_IMPACT and (
                     (contact.left.active and contact.left.normal_force > config.contact_detect_force_n)
@@ -1550,11 +2212,30 @@ def run_box_catch(
                     # *first* one-sided touch (matching CAPTURE's definition:
                     # some, not yet stable, bilateral contact), not on
                     # both_contact as the original PRE_CONTACT -> GRASPING
-                    # transition required.
+                    # transition required. Unchanged by the INTERCEPT-stuck
+                    # fix above: this was never the broken piece -- it simply
+                    # never got reached because PRE_IMPACT itself was
+                    # unreachable. See section 8's "don't mix Stage 0 logic
+                    # into general phase logic": no separate Stage-0 CAPTURE
+                    # bypass is added here, since the INTERCEPT fix already
+                    # transitively guarantees CAPTURE is reached once contact
+                    # happens (contact => PRE_IMPACT via the fallback above,
+                    # then this same one-sided-touch check promotes it).
+                    phase_transition_reason = "bilateral_contact"
                     phase = CatchPhase.CAPTURE
                 elif phase is CatchPhase.CAPTURE:
-                    hold_timer = hold_timer + control_dt if both_pads_at_required_force else 0.0
+                    # fixture_released or not use_launch_fixture is a no-op
+                    # for every existing caller (use_launch_fixture=False ->
+                    # always True). Stage 0: the hold timer must not
+                    # accumulate while the box is still weld-held -- section
+                    # 6's "fixture active + contact + 5s != success"
+                    # guarantee.
+                    if fixture_released or not config.use_launch_fixture:
+                        hold_timer = hold_timer + control_dt if both_pads_at_required_force else 0.0
+                    else:
+                        hold_timer = 0.0
                     if hold_timer >= config.hold_entry_dwell_s:
+                        phase_transition_reason = "required_force"
                         phase = CatchPhase.HOLD
                         hold_timer = 0.0
                         hold_break_timer = 0.0
@@ -1566,7 +2247,7 @@ def run_box_catch(
                     # under strict_box_speed_max_mps/strict_box_angular_
                     # speed_max_radps, all continuously for required_hold_s)
                     # -- unchanged from the original GRASPED -> SUCCESS bar.
-                    if strict_stable_contact:
+                    if (fixture_released or not config.use_launch_fixture) and strict_stable_contact:
                         hold_timer += control_dt
                     else:
                         hold_timer = 0.0
@@ -1609,6 +2290,12 @@ def run_box_catch(
                             )
                         else:
                             phase = CatchPhase.SUCCESS
+                            if fixture_active:
+                                print(
+                                    f"[Stage 0] Stable hold completed after fixture release: "
+                                    f"{hold_timer:.3f} s.",
+                                    flush=True,
+                                )
                 # Safety/terminal conditions are hard overrides, never
                 # interpolated/blended (item 3's requirement) -- they already
                 # were not part of the phase-prior blending mechanism (which
@@ -1618,11 +2305,19 @@ def run_box_catch(
                 # substep below) is computed entirely independently of
                 # CatchPhase and is never smoothed either.
                 if impact.emergency:
+                    phase_transition_reason = "emergency"
                     phase = CatchPhase.FAILED
                     failure_reason = "emergency contact force exceeded"
+                    if fixture_active and not fixture_released:
+                        print(
+                            f"[Stage 0] Emergency contact before fixture release: "
+                            f"peak force = {impact.peak_first_contact_force:.1f} N.",
+                            flush=True,
+                        )
                 elif (
                     phase in {CatchPhase.INTERCEPT, CatchPhase.PRE_IMPACT}
                     and box_position[0] < cfg.catch_plane_x - 0.16
+                    and not (fixture_active and not fixture_released)
                 ):
                     phase = CatchPhase.FAILED
                     failure_reason = "box passed the interception workspace"
@@ -1876,6 +2571,128 @@ def run_box_catch(
                 previous_mean_weights = _current_mean_weights
                 previous_weights_phase = control_index
 
+                if fixture_active and os.environ.get("STAGE0_DEBUG_TRACE"):
+                    # Temporary diagnostic instrumentation (env-var gated,
+                    # default off) for fixture release / phase-transition
+                    # root-cause analysis -- not a permanent feature.
+                    if phase is not old_phase or phase_transition_reason:
+                        print(
+                            f"[Stage 0] PHASE {old_phase.value} -> {phase.value} "
+                            f"reason={phase_transition_reason!r} at t={time_s:.3f}s",
+                            flush=True,
+                        )
+                    print(
+                        f"TRACE t={time_s:.3f} current_phase={phase.value} "
+                        f"next_phase={phase.value} phase_transition_reason={phase_transition_reason!r} "
+                        f"remaining_ttc={remaining_ttc:.4f} remaining_ttc_valid={remaining_ttc_valid} "
+                        f"prediction_confident={prediction_confident} "
+                        f"ttc_requests_preimpact={ttc_requests_preimpact} "
+                        f"left_pad_box_surface_distance_m={left_pad_box_surface_distance_m:.4f} "
+                        f"right_pad_box_surface_distance_m={right_pad_box_surface_distance_m:.4f} "
+                        f"pad_box_surface_distance_m={pad_box_surface_distance_m:.4f} "
+                        f"pad_distance_requests_preimpact={pad_distance_requests_preimpact} "
+                        f"left_contact_active={contact.left.active} right_contact_active={contact.right.active} "
+                        f"left_normal_force_n={contact.left.normal_force:.2f} "
+                        f"right_normal_force_n={contact.right.normal_force:.2f} "
+                        f"contact_requests_preimpact={contact_requests_preimpact} "
+                        f"bilateral_contact={contact.bilateral} both_pads_at_required_force={both_pads_at_required_force} "
+                        f"fixture_active={fixture_active} fixture_released={fixture_released} "
+                        f"required_grip_force_n={required_grip_force:.2f} "
+                        f"hold_timer={hold_timer:.3f} "
+                        f"grasp_w={float(np.mean(action.weights['grasp'])):.2f} "
+                        f"force_w={float(np.mean(action.weights['force'])):.2f} "
+                        f"hand_object_distance={hand_object_distance:.4f}",
+                        flush=True,
+                    )
+                    # CAPTURE2: post-release contact-loss root-cause fields
+                    # (compression/tracking commands, pad-box relative
+                    # velocity, per-cost weights, impedance state).
+                    # latest_impedance is one control step stale (set at the
+                    # end of the PREVIOUS step's substep loop) -- an already-
+                    # established convention elsewhere in this file, not a
+                    # new approximation introduced here.
+                    _actual_hand_separation_m = float(np.linalg.norm(ee_positions[3:] - ee_positions[:3]))
+                    _desired_hand_separation_m = float(np.linalg.norm(relative_reference))
+                    _compression_error_m = _actual_hand_separation_m - _desired_hand_separation_m
+                    _left_cmd = action.velocity[:3]
+                    _right_cmd = action.velocity[3:]
+                    _left_to_box = box_position - left_ee
+                    _left_to_box_dir = _left_to_box / max(float(np.linalg.norm(_left_to_box)), 1e-9)
+                    _right_to_box = box_position - right_ee
+                    _right_to_box_dir = _right_to_box / max(float(np.linalg.norm(_right_to_box)), 1e-9)
+                    _left_command_toward_box = float(np.dot(_left_cmd, _left_to_box_dir))
+                    _right_command_toward_box = float(np.dot(_right_cmd, _right_to_box_dir))
+                    _left_pad_velocity = measured_velocity[:3]
+                    _right_pad_velocity = measured_velocity[3:]
+                    _left_impedance = latest_impedance["left"]
+                    _right_impedance = latest_impedance["right"]
+                    print(
+                        f"CAPTURE2 t={time_s:.3f} phase={phase.value} "
+                        f"left_contact_active={contact.left.active} right_contact_active={contact.right.active} "
+                        f"left_normal_force_n={contact.left.normal_force:.3f} "
+                        f"right_normal_force_n={contact.right.normal_force:.3f} "
+                        f"required_grip_force_n={required_grip_force:.3f} "
+                        f"actual_hand_separation_m={_actual_hand_separation_m:.4f} "
+                        f"desired_hand_separation_m={_desired_hand_separation_m:.4f} "
+                        f"compression_error_m={_compression_error_m:.4f} "
+                        f"left_mpc_velocity_command={np.array2string(_left_cmd, precision=3)} "
+                        f"right_mpc_velocity_command={np.array2string(_right_cmd, precision=3)} "
+                        f"left_command_toward_box={_left_command_toward_box:.4f} "
+                        f"right_command_toward_box={_right_command_toward_box:.4f} "
+                        f"left_command_vertical={_left_cmd[2]:.4f} right_command_vertical={_right_cmd[2]:.4f} "
+                        f"box_linear_velocity={np.array2string(box_velocity, precision=3)} "
+                        f"left_pad_linear_velocity={np.array2string(_left_pad_velocity, precision=3)} "
+                        f"right_pad_linear_velocity={np.array2string(_right_pad_velocity, precision=3)} "
+                        f"left_pad_box_relative_velocity={np.array2string(_left_pad_velocity - box_velocity, precision=3)} "
+                        f"right_pad_box_relative_velocity={np.array2string(_right_pad_velocity - box_velocity, precision=3)} "
+                        f"object_w={float(np.mean(action.weights['object'])):.2f} "
+                        f"grasp_w={float(np.mean(action.weights['grasp'])):.2f} "
+                        f"force_w={float(np.mean(action.weights['force'])):.2f} "
+                        f"velocity_w={float(np.mean(action.weights['velocity'])):.2f} "
+                        f"smoothness_w={float(np.mean(action.weights['smoothness'])):.2f} "
+                        f"left_impedance_target={np.array2string(desired_transforms['left'][:3, 3], precision=3)} "
+                        f"right_impedance_target={np.array2string(desired_transforms['right'][:3, 3], precision=3)} "
+                        f"left_applied_torque_norm={'NA' if _left_impedance is None else f'{float(np.linalg.norm(_left_impedance.tau)):.3f}'} "
+                        f"right_applied_torque_norm={'NA' if _right_impedance is None else f'{float(np.linalg.norm(_right_impedance.tau)):.3f}'}",
+                        flush=True,
+                    )
+                    # HOLD3: stable-hold bottleneck diagnosis (section 4/5 of
+                    # the fixture-height/HOLD investigation) -- uses the
+                    # exact strict_force_ok/strict_speed_ok/strict_angular_ok
+                    # variables the real hold_timer gate (HOLD branch above)
+                    # already computes, not a re-derived approximation.
+                    _fixture_gate_ok = fixture_released or not config.use_launch_fixture
+                    _reset_reason = _stable_hold_reset_reason(
+                        phase_is_hold=phase is CatchPhase.HOLD,
+                        fixture_gate_ok=_fixture_gate_ok,
+                        left_active=contact.left.active,
+                        right_active=contact.right.active,
+                        left_force_n=contact.left.normal_force,
+                        right_force_n=contact.right.normal_force,
+                        required_grip_force_n=required_grip_force,
+                        strict_grip_force_max_n=config.strict_grip_force_max_n,
+                        linear_speed_ok=strict_speed_ok,
+                    )
+                    print(
+                        f"HOLD3 t={time_s:.3f} phase={phase.value} "
+                        f"left_contact_active={contact.left.active} right_contact_active={contact.right.active} "
+                        f"left_normal_force_n={contact.left.normal_force:.3f} "
+                        f"right_normal_force_n={contact.right.normal_force:.3f} "
+                        f"required_grip_force_n={required_grip_force:.3f} "
+                        f"box_linear_velocity_xyz={np.array2string(box_velocity, precision=4)} "
+                        f"box_linear_speed_n={float(np.linalg.norm(box_velocity)):.4f} "
+                        f"box_angular_velocity_xyz={np.array2string(box_angular_velocity, precision=4)} "
+                        f"box_angular_speed_n={float(np.linalg.norm(box_angular_velocity)):.4f} "
+                        f"stable_contact_condition={both_contact} "
+                        f"stable_force_condition={strict_force_ok} "
+                        f"stable_velocity_condition={strict_speed_ok} "
+                        f"stable_angular_velocity_condition={strict_angular_ok} "
+                        f"stable_hold_condition={strict_stable_contact} "
+                        f"stable_hold_duration_s={hold_timer:.4f} "
+                        f"stable_hold_reset_reason={_reset_reason!r} "
+                        f"angular_speed_exceeded_diagnostic={angular_speed_exceeded_diagnostic}",
+                        flush=True,
+                    )
                 last_phase = control_index
                 last_ee_positions = ee_positions
                 last_object_position = target_center.copy()
@@ -2013,12 +2830,8 @@ def run_box_catch(
                         * command_velocity[3 * index : 3 * (index + 1)]
                     )
                     desired_transforms[name][:3, 3] = base_commanded_position[name]
-                desired_transforms["left"][:3, :3] = np.column_stack(
-                    [y_axis, -effective_rotation[:, 0], effective_rotation[:, 2]]
-                )
-                desired_transforms["right"][:3, :3] = np.column_stack(
-                    [-y_axis, effective_rotation[:, 0], effective_rotation[:, 2]]
-                )
+                desired_transforms["left"][:3, :3] = desired_ee_targets["left"][:3, :3]
+                desired_transforms["right"][:3, :3] = desired_ee_targets["right"][:3, :3]
 
                 rows.append(
                     {
@@ -2028,6 +2841,7 @@ def run_box_catch(
                         "box_z": float(box_position[2]),
                         "left_force_n": contact.left.normal_force,
                         "right_force_n": contact.right.normal_force,
+                        "requested_hold_force_n": requested_force,
                         "box_speed_mps": float(np.linalg.norm(box_velocity)),
                         "box_angular_speed_radps": float(
                             np.linalg.norm(
@@ -2157,14 +2971,29 @@ def run_box_catch(
                 desired_transforms["right"][:3, 3] = base_commanded_position["right"]
 
             for name in ("left", "right"):
+                measured_force = (
+                    contact.left.normal_force
+                    if name == "left"
+                    else contact.right.normal_force
+                )
+                inward = -y_axis if name == "left" else y_axis
+                force_wrench = force_feedback_gain * _missing_normal_force_wrench(
+                    requested_force, measured_force, inward
+                )
                 latest_impedance[name] = impedance[name].apply(
-                    model, data, arms[name], desired_transforms[name]
+                    model,
+                    data,
+                    arms[name],
+                    desired_transforms[name],
+                    wrench_feedforward=force_wrench,
                 )
                 data.ctrl[gripper_ids[name]] = FFW_GRIPPERS[name].open_ctrl
 
             mujoco.mj_step(model, data)
             if viewer is not None:
                 viewer.sync()
+            if config.live_state_path is not None and step % (control_stride * config.live_state_every) == 0:
+                _dump_live_state(config.live_state_path, model, data)
             # No post-step "if terminal: break" here (unlike the original) --
             # phase only ever becomes SUCCESS/FAILED inside the control-stride
             # block above, which now breaks immediately once terminal (see
@@ -2193,7 +3022,7 @@ def run_box_catch(
             done=True,
         )
         total_transitions += 1
-    if len(rollout) and config.online_learning:
+    if len(rollout) and config.online_learning and owns_rollout_buffer:
         latest_update = learner.update(rollout, online=not config.offline_training, next_value=0.0)
         updates.append(latest_update)
         wandb_logger.log(
@@ -2214,6 +3043,25 @@ def run_box_catch(
 
     episode_final_step = global_step_start + control_step_count
     wandb_logger.log(build_episode_reward_log(total_reward), step=episode_final_step)
+    if fixture_active:
+        wandb_logger.log(
+            build_fixture_log(
+                fixture_released=fixture_released,
+                fixture_release_time_s=fixture_release_time_s,
+                bilateral_contact_duration_at_release_s=(
+                    bilateral_contact_duration if fixture_released else 0.0
+                ),
+                pre_release_peak_contact_force_n=pre_release_peak_contact_force_n,
+                post_release_peak_contact_force_n=post_release_peak_contact_force_n,
+                post_release_hold_duration_s=float(hold_timer) if fixture_active else 0.0,
+                fixture_release_force_threshold_n=fixture_release_force_n,
+                fixture_release_left_force_n=fixture_release_left_force_n,
+                fixture_release_right_force_n=fixture_release_right_force_n,
+                fixture_release_force_dwell_s=config.fixture_release_force_dwell_s,
+                fixture_release_force_safety_factor=config.fixture_release_force_safety_factor,
+            ),
+            step=episode_final_step,
+        )
     if owns_wandb_logger:
         wandb_logger.finish()
 
@@ -2292,6 +3140,22 @@ def run_box_catch(
         ),
         hold_angular_violation_fraction=(
             float(hold_angular_violation_count / hold_step_count) if hold_step_count else 0.0
+        ),
+        fixture_enabled=fixture_active,
+        fixture_released=fixture_released,
+        fixture_release_time_s=fixture_release_time_s,
+        bilateral_contact_duration_at_release_s=(
+            bilateral_contact_duration if fixture_released else 0.0
+        ),
+        pre_release_peak_contact_force_n=pre_release_peak_contact_force_n,
+        post_release_peak_contact_force_n=post_release_peak_contact_force_n,
+        post_release_hold_duration_s=float(hold_timer) if fixture_active else 0.0,
+        fixture_release_force_threshold_n=fixture_release_force_n if fixture_active else 0.0,
+        fixture_release_left_force_n=fixture_release_left_force_n,
+        fixture_release_right_force_n=fixture_release_right_force_n,
+        fixture_release_force_dwell_s=config.fixture_release_force_dwell_s if fixture_active else 0.0,
+        fixture_release_force_safety_factor=(
+            config.fixture_release_force_safety_factor if fixture_active else 0.0
         ),
     )
 

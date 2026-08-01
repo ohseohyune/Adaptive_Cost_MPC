@@ -46,7 +46,7 @@ import sys
 from collections import Counter
 from dataclasses import replace
 from pathlib import Path
-from typing import Iterable
+from typing import Iterable, Optional
 
 import numpy as np
 
@@ -82,6 +82,7 @@ except ImportError:  # pragma: no cover - exercised by --smoke-test without wand
 
 SWEEP_PARAMETERS: dict[str, tuple[CatchControlPhase, int]] = {
     "hold_grasp_weight": (CatchControlPhase.HOLD, 1),
+    "hold_object_weight": (CatchControlPhase.HOLD, 0),
     "pre_impact_velocity_weight": (CatchControlPhase.PRE_IMPACT, 3),
 }
 
@@ -314,6 +315,69 @@ def _run_smoke_test(n_train_seeds: int) -> None:
             f"{label:24s} objective={objective:8.3f} success_rate={aggregate['success_rate']:.2f} "
             f"unsafe_rate={aggregate['unsafe_rate']:.2f} n={aggregate['n']}"
         )
+
+
+# ---- fixed stratified evaluation suite ---------------------------------------
+
+# Disjoint from BASE_SEED (1000+)/HOLDOUT_BASE_SEED (9000+) -- a separate
+# fixed range so this suite's results never depend on --n-train-seeds or any
+# other knob that changes train_seeds()'s size.
+EVALUATION_BASE_SEED = 50_000
+EVALUATION_SEEDS_PER_BIN = 10
+
+
+def evaluation_manifest(
+    *, seeds_per_bin: int = EVALUATION_SEEDS_PER_BIN
+) -> tuple[tuple[CurriculumStage, int, tuple[int, ...]], ...]:
+    """Deterministic stratified manifest: one bin per progressive-curriculum
+    stage (control/squeeze/progressive_curriculum.py), each with a fixed,
+    disjoint seed range. Not every mass x speed x friction combination --
+    each stage's own sampling already spans its intended range; the manifest
+    only needs to be reproducible across runs, not exhaustive."""
+
+    from control.squeeze import progressive_catch_curriculum
+
+    stages = progressive_catch_curriculum()
+    return tuple(
+        (
+            stage,
+            index,
+            tuple(
+                EVALUATION_BASE_SEED + index * seeds_per_bin + offset
+                for offset in range(seeds_per_bin)
+            ),
+        )
+        for index, stage in enumerate(stages)
+        # static_grasp_bootstrap's bypass_ballistic_resolution needs
+        # sample_stage_domain's special-cased squeeze construction (no
+        # ballistic resolve at all -- see progressive_curriculum.py); this
+        # function reuses run_one_config unchanged, which always resolves
+        # ballistic velocity/position inline (mirroring the legacy
+        # curriculum loop), so that stage isn't evaluable through this path.
+        # Known gap, not silently wrong: excluded rather than run broken.
+        if not stage.bypass_ballistic_resolution
+    )
+
+
+def run_stratified_evaluation(
+    phase_priors: tuple,
+    manifest: Optional[tuple] = None,
+    *,
+    device: str = "cpu",
+) -> dict[str, dict]:
+    """Fixed full-domain evaluation, separate from training curriculum
+    progress: `run_one_config` already sets `online_learning=False`, which
+    forces `OnlineActorCritic.act()`'s deterministic policy-mean branch (see
+    online_actor_critic.py's `training` flag) -- no exploration sampling, no
+    Actor/Critic update, same manifest/seeds every call. Reuses
+    `run_one_config`/`_aggregate` unchanged; the only new logic here is the
+    manifest and the per-stage loop."""
+
+    manifest = manifest if manifest is not None else evaluation_manifest()
+    return {
+        stage.name: run_one_config(phase_priors, seeds, stage, stage_index, device=device)
+        for stage, stage_index, seeds in manifest
+    }
 
 
 if __name__ == "__main__":

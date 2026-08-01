@@ -157,6 +157,11 @@ def build_ppo_update_log(summary: PPOUpdateSummary) -> dict[str, Any]:
             if summary.explained_variance is None
             else float(summary.explained_variance)
         ),
+        "train/approximate_kl": float(summary.approximate_kl),
+        "train/actor_parameter_delta": float(summary.actor_parameter_delta),
+        "train/advantage_std": float(summary.advantage_std),
+        "train/actor_grad_norm": float(summary.actor_grad_norm),
+        "train/transitions": int(summary.transitions),
     }
 
 
@@ -218,6 +223,98 @@ def build_funnel_log(
         "funnel/p_hold_given_bilateral": float(p_hold_given_bilateral),
         "funnel/p_success_given_hold": float(p_success_given_hold),
         **_failure_count_log(failure_category_counts),
+    }
+
+
+def build_curriculum_log(
+    *,
+    anchor_stage: str,
+    stage_index: int,
+    cooldown_remaining: int,
+    anchor_success_rate: float,
+) -> dict[str, Any]:
+    """curriculum/* -- progressive-mode-only scheduler state (see
+    control/squeeze/progressive_curriculum.py's AdaptiveCurriculumScheduler).
+    Legacy adaptive/balanced curriculum_mode never calls this."""
+
+    return {
+        "curriculum/anchor_stage": anchor_stage,
+        "curriculum/stage_index": int(stage_index),
+        "curriculum/cooldown_remaining": int(cooldown_remaining),
+        "curriculum/anchor_success_rate": float(anchor_success_rate),
+    }
+
+
+def build_difficulty_log(*, difficulty) -> dict[str, Any]:
+    """difficulty/* from a control.squeeze.progressive_curriculum.
+    BoxCatchDifficulty. Takes the dataclass itself (duck-typed, avoids an
+    import cycle: control/squeeze depends on nothing in control/mpc)."""
+
+    return {
+        "difficulty/ttc": float(difficulty.ttc_s),
+        "difficulty/impact_speed": float(difficulty.impact_speed_mps),
+        "difficulty/impact_energy": float(difficulty.impact_energy_j),
+        "difficulty/hold": float(difficulty.hold_difficulty),
+        "difficulty/total": float(difficulty.total_difficulty),
+    }
+
+
+def build_domain_sample_log(
+    *,
+    mass: float,
+    friction: float,
+    half_size: tuple[float, float, float],
+    angular_velocity: tuple[float, float, float],
+    sampled_launch_velocity: tuple[float, float, float],
+    resolved_launch_velocity: tuple[float, float, float],
+    resample_count: int,
+) -> dict[str, Any]:
+    """domain/* -- the sampled + resolved BoxDomainParameters for one episode
+    (progressive mode; see sample_stage_domain's resample-with-recheck)."""
+
+    return {
+        "domain/sample_mass": float(mass),
+        "domain/sample_friction": float(friction),
+        "domain/sample_size": list(float(v) for v in half_size),
+        "domain/sample_angular_velocity": list(float(v) for v in angular_velocity),
+        "domain/sample_launch_velocity": list(float(v) for v in sampled_launch_velocity),
+        "domain/resolved_launch_velocity": list(float(v) for v in resolved_launch_velocity),
+        "domain/resample_count": int(resample_count),
+    }
+
+
+def build_fixture_log(
+    *,
+    fixture_released: bool,
+    fixture_release_time_s: float | None,
+    bilateral_contact_duration_at_release_s: float,
+    pre_release_peak_contact_force_n: float,
+    post_release_peak_contact_force_n: float,
+    post_release_hold_duration_s: float,
+    fixture_release_force_threshold_n: float = 0.0,
+    fixture_release_left_force_n: float = float("nan"),
+    fixture_release_right_force_n: float = float("nan"),
+    fixture_release_force_dwell_s: float = 0.0,
+    fixture_release_force_safety_factor: float = 0.0,
+) -> dict[str, Any]:
+    """stage0/* -- static_grasp_bootstrap fixture lifecycle (see
+    AcmpcBoxCatchConfig.use_launch_fixture). Only called when that flag is
+    set; no other caller touches this."""
+
+    return {
+        "stage0/fixture_release_rate": float(fixture_released),
+        "stage0/fixture_release_time": (
+            float(fixture_release_time_s) if fixture_release_time_s is not None else float("nan")
+        ),
+        "stage0/bilateral_contact_dwell": float(bilateral_contact_duration_at_release_s),
+        "stage0/pre_release_peak_force": float(pre_release_peak_contact_force_n),
+        "stage0/post_release_peak_force": float(post_release_peak_contact_force_n),
+        "stage0/post_release_hold_duration": float(post_release_hold_duration_s),
+        "stage0/fixture_release_force_threshold": float(fixture_release_force_threshold_n),
+        "stage0/fixture_release_left_force": float(fixture_release_left_force_n),
+        "stage0/fixture_release_right_force": float(fixture_release_right_force_n),
+        "stage0/fixture_release_force_dwell": float(fixture_release_force_dwell_s),
+        "stage0/fixture_release_force_safety_factor": float(fixture_release_force_safety_factor),
     }
 
 

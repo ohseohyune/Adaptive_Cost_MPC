@@ -76,6 +76,21 @@ class CurriculumStage:
     launch_velocity_high: tuple[float, float, float]
     angular_velocity_low: tuple[float, float, float]
     angular_velocity_high: tuple[float, float, float]
+    # Additive fields for control/squeeze/progressive_curriculum.py's
+    # task-aligned difficulty gating -- both default to "no-op" values so
+    # every existing caller (default_curriculum()'s 3 legacy stages, and
+    # anything constructing a CurriculumStage without these) is completely
+    # unaffected. target_flight_time_s_range=None means "use the caller's
+    # DynamicSideSqueezeConfig default", matching current behavior exactly.
+    target_flight_time_s_range: Optional[tuple[float, float]] = None
+    difficulty_range: tuple[float, float] = (0.0, float("inf"))
+    # True only for the progressive curriculum's static_grasp_bootstrap stage:
+    # skips the ballistic velocity/position resolve and difficulty scoring
+    # entirely (they assume a genuine ballistic arc between two different
+    # heights, which isn't a meaningful thing to solve for a box that should
+    # start already in reach with ~zero velocity). See
+    # control/squeeze/progressive_curriculum.py's sample_stage_domain.
+    bypass_ballistic_resolution: bool = False
 
     def sample(self, rng: np.random.Generator, stage_index: int) -> BoxDomainParameters:
         axis_scale = rng.uniform(self.axis_scale_low, self.axis_scale_high)

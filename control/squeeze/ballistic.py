@@ -175,6 +175,28 @@ class BallisticBoxPredictor:
         return velocity * (self.max_speed / speed)
 
 
+def plane_crossing_ttc(prediction: BallisticPrediction, catch_plane_x: float) -> float:
+    """Smallest non-negative time for ``prediction`` to reach ``catch_plane_x``.
+
+    Pure function of the prediction + target plane (no pad positions needed),
+    factored out so difficulty-scoring code can reuse the exact same root
+    solve as `BoxFaceInterceptionPlanner` without duplicating it.
+    """
+
+    x0 = float(prediction.position[0])
+    vx = float(prediction.velocity[0])
+    gx = float(prediction.gravity[0])
+    c = x0 - catch_plane_x
+    if abs(gx) < 1e-10:
+        if abs(vx) < 1e-8:
+            return float("inf")
+        root = -c / vx
+        return float(root) if root >= 0.0 else float("inf")
+    roots = np.roots([0.5 * gx, vx, c])
+    valid = [float(root.real) for root in roots if abs(root.imag) < 1e-8 and root.real >= 0.0]
+    return min(valid) if valid else float("inf")
+
+
 class BoxFaceInterceptionPlanner:
     """Predict the box crossing of a catch plane and generate both pad targets."""
 
@@ -237,15 +259,4 @@ class BoxFaceInterceptionPlanner:
         )
 
     def _plane_crossing_ttc(self, prediction: BallisticPrediction) -> float:
-        x0 = float(prediction.position[0])
-        vx = float(prediction.velocity[0])
-        gx = float(prediction.gravity[0])
-        c = x0 - self.config.catch_plane_x
-        if abs(gx) < 1e-10:
-            if abs(vx) < 1e-8:
-                return float("inf")
-            root = -c / vx
-            return float(root) if root >= 0.0 else float("inf")
-        roots = np.roots([0.5 * gx, vx, c])
-        valid = [float(root.real) for root in roots if abs(root.imag) < 1e-8 and root.real >= 0.0]
-        return min(valid) if valid else float("inf")
+        return plane_crossing_ttc(prediction, self.config.catch_plane_x)
