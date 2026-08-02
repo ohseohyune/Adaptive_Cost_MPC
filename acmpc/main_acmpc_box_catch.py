@@ -430,6 +430,14 @@ class AcmpcBoxCatchConfig:
     # process, which otherwise runs headless inside a training subprocess.
     live_state_path: Optional[str] = None
     live_state_every: int = 10
+    # One-off episode visualization (e.g. "does the box visibly wobble in
+    # this seed"): offscreen-render every record_gif_every physics steps and
+    # write an animated GIF to this path at episode end. None (default) adds
+    # zero overhead -- no Renderer is even constructed. Not meant for bulk
+    # use (a GIF per episode across a sweep); this is a single-episode
+    # debugging aid, same spirit as `viewer` but headless-safe.
+    record_gif_path: Optional[str] = None
+    record_gif_every: int = 20
     # See its use-site comment (near object_mass) -- scales left/right_catch_
     # pad's impact-phase solref time constant up for heavier-than-nominal
     # boxes. Validated on "full" stage (50 seeds, BASE_SEED=1000, baseline
@@ -827,6 +835,23 @@ def _capture_speed_limit(box_half_y: float, configured_limit: float) -> float:
         if _normal_force_feedback_gain(box_half_y) > 1.0
         else float(configured_limit)
     )
+
+
+def _rotational_damping_schedule(
+    rotational_k: float, rotational_stiffness_hold: float, rotational_damping_hold: float
+) -> float:
+    """D(t) = D_hold * sqrt(clip(K(t)/K_hold, 0, 1)) -- keeps the rotational
+    impedance's damping ratio (zeta ~ D/sqrt(K)) pinned at whatever it is at
+    K_hold throughout the hold_contact_transition_s stiffness ramp, instead
+    of leaving D fixed at D_hold while K rises (which drops zeta as K grows).
+    Converges to exactly rotational_damping_hold once rotational_k reaches
+    rotational_stiffness_hold. Only meant for that ramp -- the pre-contact
+    TTC-soften branch and the first_contact_window branch in run_box_catch
+    keep D fixed at rotational_damping_hold unconditionally, unrelated to
+    this function."""
+
+    ratio = float(np.clip(rotational_k / max(rotational_stiffness_hold, 1e-9), 0.0, 1.0))
+    return float(rotational_damping_hold) * float(np.sqrt(ratio))
 
 
 def _fixture_release_force_n(
@@ -1606,6 +1631,15 @@ def run_box_catch(
     hold_speed_violation_count = 0
     hold_angular_violation_count = 0
     bilateral_contact_time: Optional[float] = None
+    # Diagnostic-only (rotational_k/contact_blend trace field below): the
+    # real assignment happens once per step near the end of the loop body,
+    # one step after the print that reads it (same "one control step stale"
+    # convention as latest_impedance elsewhere in this file) -- pre-seed with
+    # the impact-window value so the very first traced step has something
+    # defined instead of raising UnboundLocalError.
+    rotational_k = float(cfg.rotational_stiffness)
+    rotational_d = float(cfg.rotational_damping)
+    contact_blend = 0.0
     # NOTE: capture_center/capture_reference_velocity/capture_rotation below
     # predate and are unrelated to the new CatchPhase.CAPTURE -- they name
     # the *ballistic* sense of "capture" (freezing a reference at first
@@ -1694,6 +1728,20 @@ def run_box_catch(
         from mujoco import viewer as mj_viewer
 
         viewer = mj_viewer.launch_passive(model, data)
+
+    _gif_renderer = None
+    _gif_frames: list = []
+    _gif_camera = None
+    if config.record_gif_path is not None:
+        _gif_renderer = mujoco.Renderer(model, height=360, width=480)
+        _gif_camera = mujoco.MjvCamera()
+        # Fixed side-on view of the catch region (box arrives near
+        # catch_plane_x~0.3, hands meet it around x~0.3-0.5, z~0.8) -- not
+        # tied to any named camera since the scene XML defines none.
+        _gif_camera.lookat[:] = [0.35, 0.0, 0.85]
+        _gif_camera.distance = 1.3
+        _gif_camera.azimuth = 90.0
+        _gif_camera.elevation = -15.0
 
     total_steps = int(np.ceil(config.timeout_s / dt))
     try:
@@ -2571,10 +2619,14 @@ def run_box_catch(
                 previous_mean_weights = _current_mean_weights
                 previous_weights_phase = control_index
 
-                if fixture_active and os.environ.get("STAGE0_DEBUG_TRACE"):
+                if os.environ.get("STAGE0_DEBUG_TRACE"):
                     # Temporary diagnostic instrumentation (env-var gated,
-                    # default off) for fixture release / phase-transition
-                    # root-cause analysis -- not a permanent feature.
+                    # default off) for fixture-release / general phase-
+                    # transition root-cause analysis -- not a permanent
+                    # feature. No longer restricted to fixture_active: the
+                    # pad-distance/TTC-validity phase-gate fixes are general
+                    # (not Stage-0-only), so this needs to work for a plain
+                    # ballistic stage's trace too (Stage 1 evaluation).
                     if phase is not old_phase or phase_transition_reason:
                         print(
                             f"[Stage 0] PHASE {old_phase.value} -> {phase.value} "
@@ -2690,7 +2742,49 @@ def run_box_catch(
                         f"stable_hold_condition={strict_stable_contact} "
                         f"stable_hold_duration_s={hold_timer:.4f} "
                         f"stable_hold_reset_reason={_reset_reason!r} "
-                        f"angular_speed_exceeded_diagnostic={angular_speed_exceeded_diagnostic}",
+                        f"angular_speed_exceeded_diagnostic={angular_speed_exceeded_diagnostic} "
+                        f"rotational_k={rotational_k:.3f} rotational_d={rotational_d:.3f} "
+                        f"estimated_damping_scale={(rotational_d / max(rotational_k, 1e-9) ** 0.5):.4f} "
+                        f"contact_blend={contact_blend:.4f} "
+                        f"left_rotational_orientation_error={'NA' if _left_impedance is None else f'{_left_impedance.e_rot_norm:.4f}'} "
+                        f"right_rotational_orientation_error={'NA' if _right_impedance is None else f'{_right_impedance.e_rot_norm:.4f}'} "
+                        f"left_rotational_velocity_error={'NA' if _left_impedance is None else np.array2string(_left_impedance.omega_ee, precision=4)} "
+                        f"right_rotational_velocity_error={'NA' if _right_impedance is None else np.array2string(_right_impedance.omega_ee, precision=4)} "
+                        f"left_rotational_torque_command_norm={'NA' if _left_impedance is None else f'{float(np.linalg.norm(_left_impedance.F_imp[:3])):.4f}'} "
+                        f"right_rotational_torque_command_norm={'NA' if _right_impedance is None else f'{float(np.linalg.norm(_right_impedance.F_imp[:3])):.4f}'} "
+                        # box_rotation (world-frame 3x3, already computed above
+                        # for the pad-box-surface-distance gate) flattened
+                        # row-major -- lets post-hoc analysis reconstruct the
+                        # actual box orientation trajectory (not just angular
+                        # velocity) for HOLD-window rotation-angle diagnostics.
+                        f"box_rotation_flat={np.array2string(box_rotation.reshape(-1), precision=6, max_line_width=1000)}",
+                        flush=True,
+                    )
+                    # CONTACT3: per-pad contact point/normal/force-vector root
+                    # cause diagnostics for ANGULAR_SPEED_UNSTABLE analysis --
+                    # pad angular velocity itself isn't tracked anywhere in
+                    # this file (measured_velocity is linear-only, via finite
+                    # difference of ee_positions), so this reports what's
+                    # directly available from read_bilateral_pad_contact's
+                    # ContactInfo instead: mean contact point (world), first
+                    # contact's normal (world), and the 6D contact wrench.
+                    _left_contacts = contact.left.contacts
+                    _right_contacts = contact.right.contacts
+                    _left_pt = contact.left.mean_position
+                    _right_pt = contact.right.mean_position
+                    _left_normal = _left_contacts[0].normal if _left_contacts else np.full(3, np.nan)
+                    _right_normal = _right_contacts[0].normal if _right_contacts else np.full(3, np.nan)
+                    _left_force_vec = _left_contacts[0].force if _left_contacts else np.full(6, np.nan)
+                    _right_force_vec = _right_contacts[0].force if _right_contacts else np.full(6, np.nan)
+                    print(
+                        f"CONTACT3 t={time_s:.3f} phase={phase.value} "
+                        f"left_contact_point_world={np.array2string(_left_pt, precision=4)} "
+                        f"right_contact_point_world={np.array2string(_right_pt, precision=4)} "
+                        f"left_contact_normal_world={np.array2string(_left_normal, precision=4)} "
+                        f"right_contact_normal_world={np.array2string(_right_normal, precision=4)} "
+                        f"left_contact_force_vector={np.array2string(_left_force_vec, precision=4)} "
+                        f"right_contact_force_vector={np.array2string(_right_force_vec, precision=4)} "
+                        f"left_contact_count={contact.left.count} right_contact_count={contact.right.count}",
                         flush=True,
                     )
                 last_phase = control_index
@@ -2774,10 +2868,12 @@ def run_box_catch(
                         proximity_ratio * cfg.rotational_stiffness
                         + (1.0 - proximity_ratio) * impact_command.rotational_stiffness,
                     )
+                    rotational_d = cfg.rotational_damping
                 elif impact.in_first_contact_window:
                     tangential_k = impact_command.tangential_stiffness
                     normal_k = impact_command.normal_stiffness
                     rotational_k = impact_command.rotational_stiffness
+                    rotational_d = cfg.rotational_damping
                 else:
                     # contact_blend (computed above, shared with the
                     # pair_solref ramp) is 0 right as the window ends and
@@ -2805,6 +2901,34 @@ def run_box_catch(
                     rotational_k = (
                         1.0 - contact_blend
                     ) * impact_command.rotational_stiffness + contact_blend * cfg.rotational_stiffness
+                    # rotational_d: cfg.rotational_damping (D_hold) alone was
+                    # left fixed across this rotational_k ramp (6 -> 80 over
+                    # hold_contact_transition_s) exactly like the linear
+                    # axes' already-diagnosed D-not-re-derived issue above --
+                    # for the rotational axis this was never patched. A
+                    # fixed D against a rising K means the damping ratio
+                    # zeta ~ D/sqrt(K) keeps dropping through the ramp,
+                    # under-damping the orientation impedance and
+                    # sustaining/re-exciting the box's post-impact residual
+                    # spin (confirmed via the rotational_k/HOLD3 trace:
+                    # angular speed tracks the K ramp almost step-for-step in
+                    # Stage 1 failure seeds). Scale D by sqrt(K(t)/K_hold) so
+                    # the damping ratio stays pinned at whatever it is at
+                    # K_hold throughout this ramp only, converging to
+                    # exactly D_hold once K(t) reaches K_hold (ratio 1) --
+                    # pure consistency fix, not a damping increase (at K_hold
+                    # the value is unchanged). Scoped to this ramp branch
+                    # only -- the pre-contact TTC-soften branch and the
+                    # first_contact_window branch above keep D fixed at
+                    # cfg.rotational_damping exactly as before, since that
+                    # fixed-D regime was never the diagnosed issue and
+                    # changing it there caused a real regression (Stage 0
+                    # SC22 -- contact lost during first-contact-window
+                    # softening once D dropped in step with the impact's
+                    # already-low K there too).
+                    rotational_d = _rotational_damping_schedule(
+                        rotational_k, cfg.rotational_stiffness, cfg.rotational_damping
+                    )
                 # A perfectly simultaneous bilateral touch is rare -- one pad
                 # typically registers a step or two before the other. Rigid
                 # rotational impedance fights the box's residual spin from
@@ -2819,7 +2943,7 @@ def run_box_catch(
                         [rotational_k] * 3 + [tangential_k, normal_k, tangential_k]
                     )
                     impedance[name].D[:] = np.diag(
-                        [cfg.rotational_damping] * 3
+                        [rotational_d] * 3
                         + [cfg.tangential_damping, cfg.normal_damping, cfg.tangential_damping]
                     )
 
@@ -2992,6 +3116,9 @@ def run_box_catch(
             mujoco.mj_step(model, data)
             if viewer is not None:
                 viewer.sync()
+            if _gif_renderer is not None and step % config.record_gif_every == 0:
+                _gif_renderer.update_scene(data, camera=_gif_camera)
+                _gif_frames.append(_gif_renderer.render().copy())
             if config.live_state_path is not None and step % (control_stride * config.live_state_every) == 0:
                 _dump_live_state(config.live_state_path, model, data)
             # No post-step "if terminal: break" here (unlike the original) --
@@ -3003,6 +3130,13 @@ def run_box_catch(
     finally:
         if viewer is not None:
             viewer.close()
+        if _gif_renderer is not None:
+            _gif_renderer.close()
+            if _gif_frames:
+                import imageio
+
+                fps = 1.0 / (dt * config.record_gif_every)
+                imageio.mimsave(config.record_gif_path, _gif_frames, fps=fps, loop=0)
 
     if phase not in {CatchPhase.SUCCESS, CatchPhase.FAILED}:
         failure_reason = failure_reason or "timeout"
