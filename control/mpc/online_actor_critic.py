@@ -181,17 +181,20 @@ class OnlineActorCriticConfig:
     critic_lr: float = 5e-4
     gamma: float = 0.985
     gae_lambda: float = 0.95
-    clip_ratio: float = 0.15
+    # None selects the unclipped policy-gradient objective for the final
+    # PPO-clipping ablation; 0.15 preserves the validated default.
+    clip_ratio: Optional[float] = 0.15
     value_loss_coefficient: float = 0.5
+    normalize_returns: bool = False
     entropy_coef: float = 1e-3
     max_grad_norm: float = 1.0
     weight_delta_fraction: float = 0.65
     training_epochs: int = 4
     online_epochs: int = 1
     minibatch_size: int = 32
-    target_kl: float = 0.02
+    target_kl: Optional[float] = 0.02
     minimum_online_rollout: int = 8
-    maximum_online_actor_delta: float = 0.02
+    maximum_online_actor_delta: Optional[float] = 0.02
     # Bounds cumulative L2 distance from the reference actor (the cold-init,
     # zero-residual state, persisted across checkpoint save/load -- see
     # OnlineActorCriticACMPC._reference_actor_state) across *all* updates,
@@ -201,6 +204,12 @@ class OnlineActorCriticConfig:
     # training loop), where maximum_online_actor_delta alone cannot prevent
     # slow drift away from a validated engineered prior.
     maximum_cumulative_actor_delta: Optional[float] = None
+    # Cost Predictor output ablations. ``exp_residual`` implements
+    # prior*exp(weight_delta_fraction*z), retaining positivity and the exact
+    # engineered prior at z=0 without a final tanh.
+    weight_parameterization: str = "bounded_residual"
+    weight_clip_min: Optional[float] = 1e-3
+    weight_clip_max: Optional[float] = 500.0
     initial_log_std: float = -3.2
     # Hard clamp bounds applied to log_std after every actor update (see
     # OnlineActorCriticACMPC._LOG_STD_MIN/_MAX, now sourced from here).
@@ -245,6 +254,10 @@ class ACMPCAction:
     mean_velocity: np.ndarray
     normalized_action: np.ndarray
     weights: dict[str, np.ndarray]
+    # Values immediately before the optional hard weight clip. Keeping both
+    # makes clip activation measurable instead of inferring it from values
+    # that merely happen to be close to a bound.
+    preclip_weights: dict[str, np.ndarray]
     value: float
     log_prob: float
     entropy: float
@@ -256,6 +269,9 @@ class ACMPCAction:
     # of re-deriving it from a bare phase index, which would not reproduce a
     # mid-blend value.
     phase_prior: np.ndarray
+    hessian_condition_number: float
+    hessian_min_eigenvalue: float
+    linear_solve_residual: float
 
 
 class AdaptiveCostActor(nn.Module):
@@ -279,10 +295,34 @@ class AdaptiveCostActor(nn.Module):
         initial_log_std: float = -3.2,
         phase_priors: Optional[tuple[tuple[float, ...], ...]] = None,
         obs_dim: int = OBS_DIM,
+        weight_parameterization: str = "bounded_residual",
+        weight_clip_min: Optional[float] = 1e-3,
+        weight_clip_max: Optional[float] = 500.0,
     ) -> None:
         super().__init__()
         self.horizon = int(horizon)
         self.delta_fraction = float(delta_fraction)
+        self.weight_parameterization = str(weight_parameterization)
+        self.weight_clip_min = weight_clip_min
+        self.weight_clip_max = weight_clip_max
+        if self.weight_parameterization not in {"bounded_residual", "exp_residual"}:
+            raise ValueError(
+                "weight_parameterization must be 'bounded_residual' or 'exp_residual'"
+            )
+        if self.weight_parameterization == "bounded_residual" and not 0.0 <= self.delta_fraction < 1.0:
+            raise ValueError("bounded_residual requires 0 <= weight_delta_fraction < 1")
+        if self.weight_parameterization == "exp_residual" and self.delta_fraction < 0.0:
+            raise ValueError("exp_residual requires non-negative weight_delta_fraction")
+        if weight_clip_min is not None and weight_clip_min <= 0.0:
+            raise ValueError("weight_clip_min must be positive or None")
+        if weight_clip_max is not None and weight_clip_max <= 0.0:
+            raise ValueError("weight_clip_max must be positive or None")
+        if (
+            weight_clip_min is not None
+            and weight_clip_max is not None
+            and weight_clip_min >= weight_clip_max
+        ):
+            raise ValueError("weight_clip_min must be smaller than weight_clip_max")
         self.net = nn.Sequential(
             nn.Linear(obs_dim, hidden_dim),
             nn.LayerNorm(hidden_dim),
@@ -299,13 +339,17 @@ class AdaptiveCostActor(nn.Module):
             "phase_priors",
             torch.tensor(phase_priors or self._PHASE_PRIORS, dtype=torch.float32),
         )
+        if not torch.isfinite(self.phase_priors).all() or torch.any(self.phase_priors <= 0.0):
+            raise ValueError("phase priors must be finite and positive")
         # Learnable exploration noise on the resulting Cartesian velocity
         # action, in the same spirit as ppo_cost_adapter's _CostActor.log_std:
         # PPO's entropy bonus and clipped ratio need a real distribution
         # parameter to act on, not a fixed schedule.
         self.log_std = nn.Parameter(torch.full((6,), float(initial_log_std)))
 
-    def forward(self, observation: torch.Tensor, phase: torch.Tensor) -> torch.Tensor:
+    def forward_with_preclip(
+        self, observation: torch.Tensor, phase: torch.Tensor
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         """Predict horizon-wise cost weights for a batch of observations.
 
         ``phase`` accepts two shapes:
@@ -319,7 +363,7 @@ class AdaptiveCostActor(nn.Module):
           class needing to know anything about blending itself.
         """
 
-        residual = torch.tanh(self.net(observation)).reshape(-1, self.horizon, N_COSTS)
+        raw = self.net(observation).reshape(-1, self.horizon, N_COSTS)
         if phase.dim() == 1:
             phase_index = phase.to(device=observation.device, dtype=torch.long).reshape(-1)
             base = self.phase_priors.to(device=observation.device, dtype=observation.dtype)[
@@ -327,12 +371,23 @@ class AdaptiveCostActor(nn.Module):
             ]
         else:
             base = phase.to(device=observation.device, dtype=observation.dtype).reshape(-1, N_COSTS)
-        weights = base.unsqueeze(1) * (1.0 + self.delta_fraction * residual)
-        # 500 (not the previous 50) so a scenario needing a much stiffer
-        # relative/grasp-tracking prior -- e.g. closing a large initial
-        # hand-separation gap within a fast ballistic catch's short window --
-        # is not silently capped below what its prior actually requests.
-        return torch.clamp(weights, min=1e-3, max=500.0)
+        if self.weight_parameterization == "bounded_residual":
+            preclip = base.unsqueeze(1) * (
+                1.0 + self.delta_fraction * torch.tanh(raw)
+            )
+        else:
+            preclip = base.unsqueeze(1) * torch.exp(self.delta_fraction * raw)
+        if not torch.isfinite(preclip).all() or torch.any(preclip <= 0.0):
+            raise FloatingPointError("Cost Predictor produced non-finite or non-positive weights")
+        weights = preclip
+        if self.weight_clip_min is not None or self.weight_clip_max is not None:
+            weights = torch.clamp(
+                weights, min=self.weight_clip_min, max=self.weight_clip_max
+            )
+        return weights, preclip
+
+    def forward(self, observation: torch.Tensor, phase: torch.Tensor) -> torch.Tensor:
+        return self.forward_with_preclip(observation, phase)[0]
 
 
 class PriorFreeCostActor(nn.Module):
@@ -418,6 +473,12 @@ class PriorFreeCostActor(nn.Module):
         weights = nn.functional.softplus(raw)
         return torch.clamp(weights, min=1e-3, max=500.0)
 
+    def forward_with_preclip(
+        self, observation: torch.Tensor, phase_prior: torch.Tensor
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        weights = self.forward(observation, phase_prior)
+        return weights, weights
+
 
 class ValueCritic(nn.Module):
     def __init__(self, hidden_dim: int, obs_dim: int = OBS_DIM) -> None:
@@ -462,6 +523,10 @@ class DifferentiableBimanualMPC(nn.Module):
         self.register_buffer(
             "gravity", torch.tensor(self.config.gravity, dtype=torch.float32)
         )
+        self.collect_numerics = False
+        self.last_condition_number = float("nan")
+        self.last_min_eigenvalue = float("nan")
+        self.last_solve_residual = float("nan")
 
     def forward(
         self,
@@ -522,6 +587,9 @@ class DifferentiableBimanualMPC(nn.Module):
         a_relative = relative_stack @ gamma
 
         solutions: list[torch.Tensor] = []
+        condition_numbers: list[float] = []
+        minimum_eigenvalues: list[float] = []
+        solve_residuals: list[float] = []
         eye = torch.eye(6 * n, device=device, dtype=dtype)
         for b in range(batch):
             w_object = torch.repeat_interleave(weights[b, :, 0], 3)
@@ -545,13 +613,37 @@ class DifferentiableBimanualMPC(nn.Module):
             h = h + difference.T @ (w_smooth[:, None] * difference)
             rhs = rhs + difference.T @ (w_smooth * smooth_target)
             h = 0.5 * (h + h.T) + self.config.regularization * eye
+            if not torch.isfinite(h).all() or not torch.isfinite(rhs).all():
+                raise FloatingPointError("MPC Hessian or right-hand side contains NaN or Inf")
             raw = torch.linalg.solve(h, rhs)
+            if not torch.isfinite(raw).all():
+                raise FloatingPointError("MPC linear solve produced NaN or Inf")
+            if self.collect_numerics:
+                with torch.no_grad():
+                    eigenvalues = torch.linalg.eigvalsh(h.detach())
+                    minimum_eigenvalue = float(eigenvalues[0].cpu())
+                    condition_numbers.append(
+                        float((eigenvalues[-1] / eigenvalues[0].clamp_min(1e-30)).cpu())
+                    )
+                    minimum_eigenvalues.append(minimum_eigenvalue)
+                    solve_residuals.append(
+                        float(
+                            (
+                                torch.linalg.vector_norm(h.detach() @ raw.detach() - rhs.detach())
+                                / torch.linalg.vector_norm(rhs.detach()).clamp_min(1e-12)
+                            ).cpu()
+                        )
+                    )
             bounded = self.config.velocity_limit * torch.tanh(
                 raw / self.config.velocity_limit
             )
             solutions.append(bounded)
 
         sequence = torch.stack(solutions, dim=0).reshape(batch, n, 6)
+        if self.collect_numerics:
+            self.last_condition_number = max(condition_numbers)
+            self.last_min_eigenvalue = min(minimum_eigenvalues)
+            self.last_solve_residual = max(solve_residuals)
         return sequence[:, 0, :], sequence
 
 
@@ -667,6 +759,15 @@ class OnlineActorCriticACMPC:
     ) -> None:
         self.mpc_config = mpc_config or DifferentiableMPCConfig()
         self.config = learning_config or OnlineActorCriticConfig()
+        for name in (
+            "clip_ratio",
+            "target_kl",
+            "maximum_online_actor_delta",
+            "maximum_cumulative_actor_delta",
+        ):
+            value = getattr(self.config, name)
+            if value is not None and value <= 0.0:
+                raise ValueError(f"{name} must be positive or None")
         self.device = resolve_device(self.config.device)
         torch.manual_seed(self.config.seed)
         np.random.seed(self.config.seed)
@@ -696,12 +797,18 @@ class OnlineActorCriticACMPC:
                 self.config.initial_log_std,
                 self.config.phase_priors,
                 obs_dim=self.obs_dim,
+                weight_parameterization=self.config.weight_parameterization,
+                weight_clip_min=self.config.weight_clip_min,
+                weight_clip_max=self.config.weight_clip_max,
             ).to(self.device)
         self.critic = ValueCritic(self.config.hidden_dim, obs_dim=self.obs_dim).to(self.device)
         self.mpc = DifferentiableBimanualMPC(self.mpc_config).to(self.device)
         self.actor_optimizer = torch.optim.Adam(self.actor.parameters(), lr=self.config.actor_lr)
         self.critic_optimizer = torch.optim.Adam(self.critic.parameters(), lr=self.config.critic_lr)
         self.update_count = 0
+        self.return_mean = 0.0
+        self.return_variance = 1.0
+        self.return_count = 0
         # maximum_online_actor_delta only bounds each *individual* update's
         # movement -- it does nothing to stop thousands of small, individually
         # legal updates from cumulatively drifting the actor far from the
@@ -715,6 +822,7 @@ class OnlineActorCriticACMPC:
         # actor unless overwritten by load() from a checkpoint that saved
         # its own reference.
         self._reference_actor_state = [p.detach().clone() for p in self.actor.parameters()]
+        self.actor_parameter_path_length = 0.0
 
     def _resolve_phase_prior(
         self, phase: int, phase_prior: Optional[np.ndarray]
@@ -762,16 +870,20 @@ class OnlineActorCriticACMPC:
         previous = self._tensor(previous_velocity).reshape(1, 6)
 
         with torch.no_grad():
-            weights = self.actor(obs, prior_row)
-            mean_velocity, _ = self.mpc(
-                ee_positions=state,
-                object_positions=obj,
-                object_velocities=obj_vel,
-                relative_reference=rel,
-                weights=weights,
-                previous_velocity=previous,
-            )
-            value = self.critic(obs)
+            weights, preclip_weights = self.actor.forward_with_preclip(obs, prior_row)
+            self.mpc.collect_numerics = True
+            try:
+                mean_velocity, _ = self.mpc(
+                    ee_positions=state,
+                    object_positions=obj,
+                    object_velocities=obj_vel,
+                    relative_reference=rel,
+                    weights=weights,
+                    previous_velocity=previous,
+                )
+            finally:
+                self.mpc.collect_numerics = False
+            value = self._denormalize_value(self.critic(obs))
             normalized_mean = mean_velocity / self.mpc_config.velocity_limit
             log_std = torch.clamp(self.actor.log_std, self.config.log_std_min, self.config.log_std_max)
             std = log_std.exp().expand_as(normalized_mean)
@@ -783,15 +895,23 @@ class OnlineActorCriticACMPC:
             entropy = distribution.entropy().sum(dim=1)
 
         weights_np = weights.detach().cpu().numpy()[0]
+        preclip_weights_np = preclip_weights.detach().cpu().numpy()[0]
         return ACMPCAction(
             velocity=velocity.detach().cpu().numpy()[0],
             mean_velocity=mean_velocity.detach().cpu().numpy()[0],
             normalized_action=normalized_action.detach().cpu().numpy()[0],
             weights={name: weights_np[:, i].copy() for i, name in enumerate(COST_NAMES)},
+            preclip_weights={
+                name: preclip_weights_np[:, i].copy()
+                for i, name in enumerate(COST_NAMES)
+            },
             value=float(value.detach().cpu().item()),
             log_prob=float(log_prob.detach().cpu().item()),
             entropy=float(entropy.detach().cpu().item()),
             phase_prior=prior_row.detach().cpu().numpy()[0].copy(),
+            hessian_condition_number=self.mpc.last_condition_number,
+            hessian_min_eigenvalue=self.mpc.last_min_eigenvalue,
+            linear_solve_residual=self.mpc.last_solve_residual,
         )
 
     def predict_value(self, observation: np.ndarray) -> float:
@@ -799,7 +919,8 @@ class OnlineActorCriticACMPC:
 
         with torch.no_grad():
             obs = self._tensor(observation).reshape(1, self.obs_dim)
-            return float(self.critic(obs).detach().cpu().item())
+            value = self._denormalize_value(self.critic(obs))
+            return float(value.detach().cpu().item())
 
     def update(
         self,
@@ -842,7 +963,14 @@ class OnlineActorCriticACMPC:
             old_log_probabilities=self._tensor(np.asarray(rollout.log_probabilities)),
         )
         advantages_tensor = self._tensor(advantages)
-        returns_tensor = self._tensor(returns)
+        if self.config.normalize_returns:
+            self._update_return_statistics(returns)
+            returns_for_critic = (
+                returns - self.return_mean
+            ) / np.sqrt(self.return_variance + 1e-8)
+        else:
+            returns_for_critic = returns
+        returns_tensor = self._tensor(returns_for_critic)
 
         actor_before = [parameter.detach().clone() for parameter in self.actor.parameters()]
         epochs = self.config.online_epochs if online else self.config.training_epochs
@@ -851,6 +979,7 @@ class OnlineActorCriticACMPC:
         critic_losses: list[float] = []
         entropies: list[float] = []
         actor_grad_norms: list[float] = []
+        clip_fractions: list[float] = []
         stop_for_kl = False
 
         for _ in range(epochs):
@@ -863,18 +992,36 @@ class OnlineActorCriticACMPC:
                 log_ratio = new_log_probability - mini.old_log_probabilities
                 ratio = log_ratio.exp()
                 approximate_kl = ((ratio - 1.0) - log_ratio).mean()
-                if online and approximate_kl.item() > self.config.target_kl:
+                if (
+                    online
+                    and self.config.target_kl is not None
+                    and approximate_kl.item() > self.config.target_kl
+                ):
                     stop_for_kl = True
                     break
 
                 unclipped = ratio * advantages_tensor[indices]
-                clipped = torch.clamp(
-                    ratio,
-                    1.0 - self.config.clip_ratio,
-                    1.0 + self.config.clip_ratio,
-                ) * advantages_tensor[indices]
+                if self.config.clip_ratio is None:
+                    policy_objective = unclipped
+                    clip_fractions.append(0.0)
+                else:
+                    clipped = torch.clamp(
+                        ratio,
+                        1.0 - self.config.clip_ratio,
+                        1.0 + self.config.clip_ratio,
+                    ) * advantages_tensor[indices]
+                    policy_objective = torch.minimum(unclipped, clipped)
+                    clip_fractions.append(
+                        float(
+                            ((ratio - 1.0).abs() > self.config.clip_ratio)
+                            .float()
+                            .mean()
+                            .detach()
+                            .cpu()
+                        )
+                    )
                 entropy = distribution.entropy().sum(dim=-1).mean()
-                actor_loss = -torch.minimum(unclipped, clipped).mean()
+                actor_loss = -policy_objective.mean()
                 actor_loss = actor_loss - self.config.entropy_coef * entropy
 
                 self.actor_optimizer.zero_grad(set_to_none=True)
@@ -905,19 +1052,34 @@ class OnlineActorCriticACMPC:
             if stop_for_kl:
                 break
 
-        actor_delta = self._actor_delta(actor_before)
-        if online and actor_delta > self.config.maximum_online_actor_delta:
+        raw_actor_delta = self._actor_delta(actor_before)
+        actor_delta = raw_actor_delta
+        online_delta_clipped = bool(
+            online
+            and self.config.maximum_online_actor_delta is not None
+            and actor_delta > self.config.maximum_online_actor_delta
+        )
+        if online_delta_clipped:
             scale = self.config.maximum_online_actor_delta / max(actor_delta, 1e-12)
             with torch.no_grad():
                 for parameter, previous in zip(self.actor.parameters(), actor_before):
                     parameter.copy_(previous + scale * (parameter - previous))
             actor_delta = self._actor_delta(actor_before)
 
-        final_kl = self._policy_kl(batch)
-        if online and final_kl > self.config.target_kl:
+        pre_projection_kl = self._policy_kl(batch)
+        final_kl = pre_projection_kl
+        delta_before_projection = actor_delta
+        projection_count = 0
+        rollback_count = 0
+        if (
+            online
+            and self.config.target_kl is not None
+            and final_kl > self.config.target_kl
+        ):
             # Parameter projection is the last line of defence if a single
             # small PPO step crosses the KL threshold before the next check.
             for _ in range(8):
+                projection_count += 1
                 scale = min(
                     0.90,
                     0.90 * np.sqrt(self.config.target_kl / max(final_kl, 1e-12)),
@@ -929,15 +1091,19 @@ class OnlineActorCriticACMPC:
                 if final_kl <= self.config.target_kl:
                     break
             if final_kl > self.config.target_kl:
+                rollback_count = 1
                 with torch.no_grad():
                     for parameter, previous in zip(self.actor.parameters(), actor_before):
                         parameter.copy_(previous)
                 final_kl = self._policy_kl(batch)
             actor_delta = self._actor_delta(actor_before)
+        projection_removed_delta = max(0.0, delta_before_projection - actor_delta)
 
+        cumulative_delta_clipped = False
         if online and self.config.maximum_cumulative_actor_delta is not None:
             cumulative_delta = self._actor_delta(self._reference_actor_state)
             if cumulative_delta > self.config.maximum_cumulative_actor_delta:
+                cumulative_delta_clipped = True
                 scale = self.config.maximum_cumulative_actor_delta / max(cumulative_delta, 1e-12)
                 with torch.no_grad():
                     for parameter, reference in zip(
@@ -946,6 +1112,10 @@ class OnlineActorCriticACMPC:
                         parameter.copy_(reference + scale * (parameter - reference))
                 actor_delta = self._actor_delta(actor_before)
 
+        self._assert_finite_actor()
+        self.actor_parameter_path_length += actor_delta
+        cumulative_delta = self._actor_delta(self._reference_actor_state)
+        path_ratio = self.actor_parameter_path_length / max(cumulative_delta, 1e-12)
         self.update_count += 1
         return PPOUpdateSummary(
             applied=True,
@@ -960,6 +1130,21 @@ class OnlineActorCriticACMPC:
             explained_variance=update_explained_variance,
             advantage_std=advantage_std,
             actor_grad_norm=float(np.mean(actor_grad_norms)) if actor_grad_norms else 0.0,
+            epochs_requested=epochs,
+            target_kl_stopped=stop_for_kl,
+            skipped_epochs=max(0, epochs - epochs_completed),
+            raw_actor_parameter_delta=raw_actor_delta,
+            online_delta_clipped=online_delta_clipped,
+            actor_update_applied_fraction=actor_delta / max(raw_actor_delta, 1e-12),
+            pre_projection_kl=pre_projection_kl,
+            kl_projection_count=projection_count,
+            kl_rollback_count=rollback_count,
+            projection_removed_delta=projection_removed_delta,
+            cumulative_actor_parameter_delta=cumulative_delta,
+            cumulative_delta_clipped=cumulative_delta_clipped,
+            actor_parameter_path_length=self.actor_parameter_path_length,
+            actor_path_displacement_ratio=path_ratio,
+            ppo_clip_fraction=float(np.mean(clip_fractions)) if clip_fractions else 0.0,
         )
 
     def _distribution(
@@ -999,6 +1184,37 @@ class OnlineActorCriticACMPC:
             )
         return float(torch.sqrt(squared).cpu())
 
+    def _assert_finite_actor(self) -> None:
+        if not all(torch.isfinite(parameter).all() for parameter in self.actor.parameters()):
+            raise FloatingPointError("Cost Predictor parameters became NaN or Inf")
+
+    def _denormalize_value(self, value: torch.Tensor) -> torch.Tensor:
+        if not self.config.normalize_returns:
+            return value
+        return value * np.sqrt(self.return_variance + 1e-8) + self.return_mean
+
+    def _update_return_statistics(self, returns: np.ndarray) -> None:
+        batch_count = int(len(returns))
+        if batch_count == 0:
+            return
+        batch_mean = float(np.mean(returns))
+        batch_variance = float(np.var(returns))
+        if self.return_count == 0:
+            self.return_mean = batch_mean
+            self.return_variance = max(batch_variance, 1e-8)
+            self.return_count = batch_count
+            return
+        total = self.return_count + batch_count
+        delta = batch_mean - self.return_mean
+        combined_m2 = (
+            self.return_variance * self.return_count
+            + batch_variance * batch_count
+            + delta * delta * self.return_count * batch_count / total
+        )
+        self.return_mean += delta * batch_count / total
+        self.return_variance = max(combined_m2 / total, 1e-8)
+        self.return_count = total
+
     @staticmethod
     def _skipped(reason: str, transitions: int) -> PPOUpdateSummary:
         return PPOUpdateSummary(
@@ -1031,6 +1247,12 @@ class OnlineActorCriticACMPC:
                 # distance" back to zero and the cap would never actually
                 # bind.
                 "reference_actor": [p.detach().cpu() for p in self._reference_actor_state],
+                "actor_parameter_path_length": self.actor_parameter_path_length,
+                "return_normalizer": {
+                    "mean": self.return_mean,
+                    "variance": self.return_variance,
+                    "count": self.return_count,
+                },
             },
             path,
         )
@@ -1051,6 +1273,13 @@ class OnlineActorCriticACMPC:
             self._reference_actor_state = [
                 tensor.to(self.device) for tensor in checkpoint["reference_actor"]
             ]
+        self.actor_parameter_path_length = float(
+            checkpoint.get("actor_parameter_path_length", 0.0)
+        )
+        normalizer = checkpoint.get("return_normalizer", {})
+        self.return_mean = float(normalizer.get("mean", 0.0))
+        self.return_variance = float(normalizer.get("variance", 1.0))
+        self.return_count = int(normalizer.get("count", 0))
 
     def _tensor(self, value: np.ndarray) -> torch.Tensor:
         return torch.as_tensor(value, dtype=torch.float32, device=self.device)

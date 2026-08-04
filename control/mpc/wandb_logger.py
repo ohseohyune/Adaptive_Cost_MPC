@@ -64,9 +64,13 @@ class WandbLogger:
 def build_mpc_weight_log(
     *,
     final_weights: dict[str, np.ndarray],
+    preclip_weights: dict[str, np.ndarray] | None = None,
     phase_prior: np.ndarray,
     phase_id: int,
     solver_time_s: float,
+    hessian_condition_number: float = float("nan"),
+    hessian_min_eigenvalue: float = float("nan"),
+    linear_solve_residual: float = float("nan"),
 ) -> dict[str, Any]:
     """mpc/*, mpc/phase_prior/*, mpc/final_weight/*, mpc/residual_*/*, state/phase_id.
 
@@ -81,12 +85,18 @@ def build_mpc_weight_log(
     phase_prior = np.asarray(phase_prior, dtype=float).reshape(len(COST_NAMES))
     data: dict[str, Any] = {
         "mpc/solver_time": float(solver_time_s) * 1000.0,  # ms
+        "mpc/hessian_condition_number": float(hessian_condition_number),
+        "mpc/hessian_min_eigenvalue": float(hessian_min_eigenvalue),
+        "mpc/linear_solve_residual": float(linear_solve_residual),
         "state/phase_id": int(phase_id),
     }
     absolute_relative_mean: list[float] = []
     for index, name in enumerate(COST_NAMES):
         label = name
         final_value = float(final_weights[name][0])
+        preclip_value = float(
+            final_value if preclip_weights is None else preclip_weights[name][0]
+        )
         prior_value = float(phase_prior[index])
         absolute_residual = final_value - prior_value
         relative_residual = (
@@ -97,6 +107,8 @@ def build_mpc_weight_log(
         data[f"mpc/{label}_weight"] = final_value
         data[f"mpc/phase_prior/{label}_weight"] = prior_value
         data[f"mpc/final_weight/{label}_weight"] = final_value
+        data[f"mpc/preclip_weight/{label}_weight"] = preclip_value
+        data[f"mpc/clip_removed/{label}_weight"] = abs(preclip_value - final_value)
         data[f"mpc/residual_absolute/{label}_weight"] = absolute_residual
         data[f"mpc/residual_relative/{label}_weight"] = relative_residual
         if not np.isnan(relative_residual):
@@ -145,6 +157,28 @@ def build_ppo_update_log(summary: PPOUpdateSummary) -> dict[str, Any]:
         ),
         "train/approximate_kl": float(summary.approximate_kl),
         "train/actor_parameter_delta": float(summary.actor_parameter_delta),
+        "train/raw_actor_parameter_delta": float(summary.raw_actor_parameter_delta),
+        "train/actor_update_applied_fraction": float(
+            summary.actor_update_applied_fraction
+        ),
+        "train/online_delta_clipped": int(summary.online_delta_clipped),
+        "train/pre_projection_kl": float(summary.pre_projection_kl),
+        "train/target_kl_stopped": int(summary.target_kl_stopped),
+        "train/skipped_epochs": int(summary.skipped_epochs),
+        "train/kl_projection_count": int(summary.kl_projection_count),
+        "train/kl_rollback_count": int(summary.kl_rollback_count),
+        "train/projection_removed_delta": float(summary.projection_removed_delta),
+        "train/cumulative_actor_parameter_delta": float(
+            summary.cumulative_actor_parameter_delta
+        ),
+        "train/cumulative_delta_clipped": int(summary.cumulative_delta_clipped),
+        "train/actor_parameter_path_length": float(
+            summary.actor_parameter_path_length
+        ),
+        "train/actor_path_displacement_ratio": float(
+            summary.actor_path_displacement_ratio
+        ),
+        "train/ppo_clip_fraction": float(summary.ppo_clip_fraction),
         "train/advantage_std": float(summary.advantage_std),
         "train/actor_grad_norm": float(summary.actor_grad_norm),
         "train/transitions": int(summary.transitions),

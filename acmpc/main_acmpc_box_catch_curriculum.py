@@ -86,6 +86,14 @@ class CurriculumBoxCatchConfig:
     # prior-only behavior (no learned deviation at all) -- for the
     # prior-only baseline arm of an ablation.
     weight_delta_fraction: float = 0.65
+    weight_parameterization: str = "bounded_residual"
+    weight_clip_min: Optional[float] = 1e-3
+    weight_clip_max: Optional[float] = 500.0
+    maximum_cumulative_actor_delta: Optional[float] = 0.4
+    maximum_online_actor_delta: Optional[float] = 0.02
+    target_kl: Optional[float] = 0.02
+    clip_ratio: Optional[float] = 0.15
+    normalize_returns: bool = False
     # Matches AcmpcBoxCatchConfig's own default -- larger values are the
     # "batch size" arm of the rollout_size/diversity diagnostic (see
     # accumulate_rollout_across_episodes for the "diversity" arm).
@@ -103,6 +111,12 @@ class CurriculumBoxCatchConfig:
     # accumulated across *several different* domain samples -- isolates
     # whether cross-episode diversity (not just batch size) is the lever.
     accumulate_rollout_across_episodes: bool = False
+    # Optional frozen-policy evaluation. A positive interval runs the same
+    # balanced, fixed-seed episode set each time with online_learning=False
+    # (policy mean, no updates); zero preserves the legacy train-only loop.
+    evaluation_every: int = 0
+    evaluation_episodes: int = 50
+    evaluation_seed: int = 100_000
     log_path: Optional[str] = str(
         ROOT / "sweep_results" / "acmpc_box_catch_curriculum.json"
     )
@@ -172,9 +186,29 @@ class CurriculumBoxCatchEpisode:
     blend_active_fraction: float
     velocity_saturation_fraction: float
     mean_mpc_solve_time_s: float
+    maximum_hessian_condition_number: float
+    minimum_hessian_eigenvalue: float
+    maximum_linear_solve_residual: float
     weight_lower_bound_hit_fraction: float
     weight_upper_bound_hit_fraction: float
     mean_actor_output_variation: float
+    mean_weight_clip_removed: float
+    max_weight_clip_removed: float
+    weight_statistics: dict
+    target_kl_stop_count: int
+    online_delta_clip_count: int
+    kl_projection_count: int
+    kl_rollback_count: int
+    cumulative_delta_clip_count: int
+    mean_raw_actor_parameter_delta: float
+    mean_applied_actor_parameter_delta: float
+    cumulative_actor_parameter_delta: float
+    actor_parameter_path_length: float
+    actor_path_displacement_ratio: float
+    mean_ppo_clip_fraction: float
+    raw_actor_parameter_deltas: tuple[float, ...]
+    applied_actor_parameter_deltas: tuple[float, ...]
+    approximate_kls: tuple[float, ...]
     # Additive fields, only meaningful for curriculum_mode="progressive"
     # (False/0.0/"" for "adaptive"/"balanced", which never populate them) --
     # existing readers that only access fields by name are unaffected.
@@ -195,6 +229,16 @@ class StagePerformance:
 
 
 @dataclass(frozen=True)
+class EvaluationCheckpoint:
+    training_episode: int
+    episodes: int
+    success_rate: float
+    impact_safe_rate: float
+    stable_hold_rate: float
+    mean_hold_time_s: float
+
+
+@dataclass(frozen=True)
 class CurriculumBoxCatchSummary:
     episodes: int
     successes: int
@@ -204,6 +248,30 @@ class CurriculumBoxCatchSummary:
     final_stage: str
     stage_summaries: tuple[StagePerformance, ...]
     episode_summaries: tuple[CurriculumBoxCatchEpisode, ...]
+    evaluation_summaries: tuple[EvaluationCheckpoint, ...]
+
+
+def _experiment_config(config: CurriculumBoxCatchConfig) -> dict:
+    """JSON-safe condition identity needed to compare ablation runs."""
+
+    return {
+        "episodes": config.episodes,
+        "random_seed": config.random_seed,
+        "curriculum_mode": config.curriculum_mode,
+        "weight_parameterization": config.weight_parameterization,
+        "weight_delta_fraction": config.weight_delta_fraction,
+        "weight_clip_min": config.weight_clip_min,
+        "weight_clip_max": config.weight_clip_max,
+        "maximum_cumulative_actor_delta": config.maximum_cumulative_actor_delta,
+        "maximum_online_actor_delta": config.maximum_online_actor_delta,
+        "target_kl": config.target_kl,
+        "clip_ratio": config.clip_ratio,
+        "normalize_returns": config.normalize_returns,
+        "rollout_size": config.rollout_size,
+        "evaluation_every": config.evaluation_every,
+        "evaluation_episodes": config.evaluation_episodes,
+        "evaluation_seed": config.evaluation_seed,
+    }
 
 
 def _is_safety_violation(
@@ -250,6 +318,10 @@ def run_curriculum_box_catch(
     config = config or CurriculumBoxCatchConfig()
     if config.episodes <= 0:
         raise ValueError("episodes must be positive")
+    if config.evaluation_every < 0:
+        raise ValueError("evaluation_every must be non-negative")
+    if config.evaluation_every > 0 and config.evaluation_episodes <= 0:
+        raise ValueError("evaluation_episodes must be positive when evaluation is enabled")
     if config.curriculum_mode not in {"adaptive", "balanced", "progressive"}:
         raise ValueError("curriculum_mode must be adaptive, balanced, or progressive")
 
@@ -294,13 +366,26 @@ def run_curriculum_box_catch(
 
     base_squeeze = DynamicSideSqueezeConfig(random_seed=config.random_seed)
     episodes: list[CurriculumBoxCatchEpisode] = []
+    evaluations: list[EvaluationCheckpoint] = []
     stages_visited: list[str] = []
 
-    run_name = config.wandb_run_name or f"phase-fixed-residual-seed-{config.random_seed}"
+    run_name = config.wandb_run_name or (
+        f"{config.weight_parameterization}-seed-{config.random_seed}"
+    )
     wandb_logger = init_wandb(
         enabled=config.use_wandb,
         run_name=run_name,
-        config={"seed": config.random_seed, "weight_mode": "phase-fixed-residual"},
+        config={
+            "seed": config.random_seed,
+            "weight_mode": config.weight_parameterization,
+            "weight_clip_min": config.weight_clip_min,
+            "weight_clip_max": config.weight_clip_max,
+            "maximum_cumulative_actor_delta": config.maximum_cumulative_actor_delta,
+            "maximum_online_actor_delta": config.maximum_online_actor_delta,
+            "target_kl": config.target_kl,
+            "clip_ratio": config.clip_ratio,
+            "normalize_returns": config.normalize_returns,
+        },
     )
     global_step = 0
     shared_rollout_buffer = (
@@ -384,6 +469,14 @@ def run_curriculum_box_catch(
                 domain_parameters=domain,
                 checkpoint_path=checkpoint_path,
                 weight_delta_fraction=config.weight_delta_fraction,
+                weight_parameterization=config.weight_parameterization,
+                weight_clip_min=config.weight_clip_min,
+                weight_clip_max=config.weight_clip_max,
+                maximum_cumulative_actor_delta=config.maximum_cumulative_actor_delta,
+                maximum_online_actor_delta=config.maximum_online_actor_delta,
+                target_kl=config.target_kl,
+                clip_ratio=config.clip_ratio,
+                normalize_returns=config.normalize_returns,
                 rollout_size=config.rollout_size,
                 entropy_coef=config.entropy_coef,
                 log_std_min=config.log_std_min,
@@ -488,9 +581,37 @@ def run_curriculum_box_catch(
                     blend_active_fraction=summary.blend_active_fraction,
                     velocity_saturation_fraction=summary.velocity_saturation_fraction,
                     mean_mpc_solve_time_s=summary.mean_mpc_solve_time_s,
+                    maximum_hessian_condition_number=(
+                        summary.maximum_hessian_condition_number
+                    ),
+                    minimum_hessian_eigenvalue=summary.minimum_hessian_eigenvalue,
+                    maximum_linear_solve_residual=summary.maximum_linear_solve_residual,
                     weight_lower_bound_hit_fraction=summary.weight_lower_bound_hit_fraction,
                     weight_upper_bound_hit_fraction=summary.weight_upper_bound_hit_fraction,
                     mean_actor_output_variation=summary.mean_actor_output_variation,
+                    mean_weight_clip_removed=summary.mean_weight_clip_removed,
+                    max_weight_clip_removed=summary.max_weight_clip_removed,
+                    weight_statistics=summary.weight_statistics,
+                    target_kl_stop_count=summary.target_kl_stop_count,
+                    online_delta_clip_count=summary.online_delta_clip_count,
+                    kl_projection_count=summary.kl_projection_count,
+                    kl_rollback_count=summary.kl_rollback_count,
+                    cumulative_delta_clip_count=summary.cumulative_delta_clip_count,
+                    mean_raw_actor_parameter_delta=summary.mean_raw_actor_parameter_delta,
+                    mean_applied_actor_parameter_delta=(
+                        summary.mean_applied_actor_parameter_delta
+                    ),
+                    cumulative_actor_parameter_delta=(
+                        summary.cumulative_actor_parameter_delta
+                    ),
+                    actor_parameter_path_length=summary.actor_parameter_path_length,
+                    actor_path_displacement_ratio=summary.actor_path_displacement_ratio,
+                    mean_ppo_clip_fraction=summary.mean_ppo_clip_fraction,
+                    raw_actor_parameter_deltas=summary.raw_actor_parameter_deltas,
+                    applied_actor_parameter_deltas=(
+                        summary.applied_actor_parameter_deltas
+                    ),
+                    approximate_kls=summary.approximate_kls,
                     is_anchor_episode=is_anchor,
                     emergency_violation=emergency_violation,
                     resample_count=resample_count,
@@ -499,30 +620,90 @@ def run_curriculum_box_catch(
                 )
             )
 
+            if config.evaluation_every > 0 and (episode_index + 1) % config.evaluation_every == 0:
+                if not checkpoint_path:
+                    raise ValueError("frozen evaluation requires checkpoint_path")
+                evaluation = run_curriculum_box_catch(
+                    replace(
+                        config,
+                        episodes=config.evaluation_episodes,
+                        random_seed=config.evaluation_seed,
+                        online_learning=False,
+                        load_checkpoint=True,
+                        curriculum_mode="balanced",
+                        log_path=None,
+                        progress_every=config.evaluation_episodes + 1,
+                        use_wandb=False,
+                        live_state_path=None,
+                        evaluation_every=0,
+                    )
+                )
+                eval_episodes = evaluation.episode_summaries
+                eval_summary = EvaluationCheckpoint(
+                    training_episode=episode_index + 1,
+                    episodes=evaluation.episodes,
+                    success_rate=evaluation.success_rate,
+                    impact_safe_rate=(
+                        1.0 - evaluation.safety_violations / evaluation.episodes
+                        if evaluation.episodes
+                        else 0.0
+                    ),
+                    stable_hold_rate=(
+                        sum(e.strict_success for e in eval_episodes) / evaluation.episodes
+                        if evaluation.episodes
+                        else 0.0
+                    ),
+                    mean_hold_time_s=(
+                        float(np.mean([e.hold_time_s for e in eval_episodes]))
+                        if eval_episodes
+                        else 0.0
+                    ),
+                )
+                evaluations.append(eval_summary)
+                wandb_logger.log(
+                    build_eval_log(
+                        success_rate=eval_summary.success_rate,
+                        impact_safe_rate=eval_summary.impact_safe_rate,
+                        stable_hold_rate=eval_summary.stable_hold_rate,
+                        mean_hold_time=eval_summary.mean_hold_time_s,
+                    ),
+                    step=global_step,
+                )
+
             if (episode_index + 1) % config.progress_every == 0:
                 window = episodes[max(0, len(episodes) - config.progress_every):]
                 rate = sum(e.success for e in window) / len(window)
                 mean_reward = float(np.mean([e.total_reward for e in window]))
                 mean_kl = float(np.mean([e.approximate_kl for e in window]))
                 mean_actor_loss = float(np.mean([e.actor_loss for e in window]))
-                # eval/* -- this loop has no separate frozen-policy eval
-                # phase (every episode both trains and is scored), so the
-                # rolling window just completed is treated as one evaluation
-                # batch. Reuses each episode's already-computed
-                # success/safety_violation/strict_success/hold_time_s --
-                # no new judgment logic.
+                # Training-window diagnostics. When frozen evaluation is
+                # disabled, retain the legacy eval/* names for compatibility;
+                # otherwise keep these separate under train_window/*.
                 impact_safe_rate = sum(not e.safety_violation for e in window) / len(window)
                 stable_hold_rate = sum(e.strict_success for e in window) / len(window)
                 mean_hold_time = float(np.mean([e.hold_time_s for e in window]))
-                wandb_logger.log(
-                    build_eval_log(
-                        success_rate=rate,
-                        impact_safe_rate=impact_safe_rate,
-                        stable_hold_rate=stable_hold_rate,
-                        mean_hold_time=mean_hold_time,
-                    ),
-                    step=global_step,
-                )
+                if config.evaluation_every > 0:
+                    wandb_logger.log(
+                        {
+                            "train_window/success_rate": rate,
+                            "train_window/impact_safe_rate": impact_safe_rate,
+                            "train_window/stable_hold_rate": stable_hold_rate,
+                            "train_window/mean_hold_time": mean_hold_time,
+                        },
+                        step=global_step,
+                    )
+                else:
+                    # Backward-compatible metric names for legacy runs that
+                    # did not request a separate frozen-policy evaluation.
+                    wandb_logger.log(
+                        build_eval_log(
+                            success_rate=rate,
+                            impact_safe_rate=impact_safe_rate,
+                            stable_hold_rate=stable_hold_rate,
+                            mean_hold_time=mean_hold_time,
+                        ),
+                        step=global_step,
+                    )
 
                 # Funnel conditional success rates + failure-category counts
                 # (task 2's per-stage breakdown). Each P(X|Y) is conditioned
@@ -601,12 +782,14 @@ def run_curriculum_box_catch(
                     with log_path.open("w") as stream:
                         json.dump(
                             {
+                                "experiment_config": _experiment_config(config),
                                 "episodes": len(episodes),
                                 "successes": sum(e.success for e in episodes),
                                 "success_rate": sum(e.success for e in episodes) / len(episodes),
                                 "stages_visited": stages_visited,
                                 "final_stage": curriculum.stage.name,
                                 "episode_summaries": [asdict(e) for e in episodes],
+                                "evaluation_summaries": [asdict(e) for e in evaluations],
                                 **(
                                     {"scheduler_state": curriculum.state_dict()}
                                     if config.curriculum_mode == "progressive"
@@ -645,6 +828,7 @@ def run_curriculum_box_catch(
         final_stage=curriculum.stage.name,
         stage_summaries=tuple(stage_summaries),
         episode_summaries=tuple(episodes),
+        evaluation_summaries=tuple(evaluations),
     )
 
     if config.log_path:
@@ -653,6 +837,7 @@ def run_curriculum_box_catch(
         with log_path.open("w") as stream:
             json.dump(
                 {
+                    "experiment_config": _experiment_config(config),
                     "episodes": result.episodes,
                     "successes": result.successes,
                     "success_rate": result.success_rate,
@@ -661,6 +846,9 @@ def run_curriculum_box_catch(
                     "final_stage": result.final_stage,
                     "stage_summaries": [asdict(s) for s in result.stage_summaries],
                     "episode_summaries": [asdict(e) for e in result.episode_summaries],
+                    "evaluation_summaries": [
+                        asdict(e) for e in result.evaluation_summaries
+                    ],
                     **(
                         {"scheduler_state": curriculum.state_dict()}
                         if config.curriculum_mode == "progressive"
@@ -672,6 +860,10 @@ def run_curriculum_box_catch(
             )
 
     return result
+
+
+def _optional_float(value: str) -> Optional[float]:
+    return None if value.strip().lower() in {"none", "off"} else float(value)
 
 
 def _parse_args() -> argparse.Namespace:
@@ -703,11 +895,26 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--wandb-run-name", default=None)
     parser.add_argument("--live-state-path", default=None)
     parser.add_argument("--weight-delta-fraction", type=float, default=0.65)
+    parser.add_argument(
+        "--weight-parameterization",
+        choices=["bounded_residual", "exp_residual"],
+        default="bounded_residual",
+    )
+    parser.add_argument("--weight-clip-min", type=_optional_float, default=1e-3)
+    parser.add_argument("--weight-clip-max", type=_optional_float, default=500.0)
+    parser.add_argument("--maximum-cumulative-actor-delta", type=_optional_float, default=0.4)
+    parser.add_argument("--maximum-online-actor-delta", type=_optional_float, default=0.02)
+    parser.add_argument("--target-kl", type=_optional_float, default=0.02)
+    parser.add_argument("--clip-ratio", type=_optional_float, default=0.15)
+    parser.add_argument("--normalize-returns", action="store_true")
     parser.add_argument("--rollout-size", type=int, default=16)
     parser.add_argument("--entropy-coef", type=float, default=1e-3)
     parser.add_argument("--log-std-min", type=float, default=-5.0)
     parser.add_argument("--log-std-max", type=float, default=-1.8)
     parser.add_argument("--accumulate-rollout-across-episodes", action="store_true")
+    parser.add_argument("--evaluation-every", type=int, default=0)
+    parser.add_argument("--evaluation-episodes", type=int, default=50)
+    parser.add_argument("--evaluation-seed", type=int, default=100_000)
     return parser.parse_args()
 
 
@@ -727,11 +934,22 @@ def main() -> None:
             wandb_run_name=args.wandb_run_name,
             live_state_path=args.live_state_path,
             weight_delta_fraction=args.weight_delta_fraction,
+            weight_parameterization=args.weight_parameterization,
+            weight_clip_min=args.weight_clip_min,
+            weight_clip_max=args.weight_clip_max,
+            maximum_cumulative_actor_delta=args.maximum_cumulative_actor_delta,
+            maximum_online_actor_delta=args.maximum_online_actor_delta,
+            target_kl=args.target_kl,
+            clip_ratio=args.clip_ratio,
+            normalize_returns=args.normalize_returns,
             rollout_size=args.rollout_size,
             entropy_coef=args.entropy_coef,
             log_std_min=args.log_std_min,
             log_std_max=args.log_std_max,
             accumulate_rollout_across_episodes=args.accumulate_rollout_across_episodes,
+            evaluation_every=args.evaluation_every,
+            evaluation_episodes=args.evaluation_episodes,
+            evaluation_seed=args.evaluation_seed,
             progressive_decision_window=args.progressive_decision_window,
             progressive_minimum_anchor_episodes=args.progressive_minimum_anchor_episodes,
             progressive_transition_cooldown_episodes=args.progressive_transition_cooldown_episodes,

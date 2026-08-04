@@ -268,7 +268,7 @@ class AcmpcBoxCatchConfig:
     exploration_std: float = 0.03
     rollout_size: int = 16
     offline_training: bool = False
-    maximum_online_actor_delta: float = 0.02
+    maximum_online_actor_delta: Optional[float] = 0.02
     # Bounds cumulative drift from the engineered prior across all episodes
     # sharing a checkpoint. Without this, a curriculum training loop's
     # online updates (bounded individually by maximum_online_actor_delta,
@@ -279,6 +279,12 @@ class AcmpcBoxCatchConfig:
     # INTERCEPT's first-horizon-step velocity weight dropping ~62% below
     # its tuned value and GRASPED's force weight rising ~55% above it.
     maximum_cumulative_actor_delta: Optional[float] = 0.4
+    weight_parameterization: str = "bounded_residual"
+    weight_clip_min: Optional[float] = 1e-3
+    weight_clip_max: Optional[float] = 500.0
+    target_kl: Optional[float] = 0.02
+    clip_ratio: Optional[float] = 0.15
+    normalize_returns: bool = False
     # 3-way ablation switch (see acmpc_box_catch_integration_status.md):
     # False (default) = AdaptiveCostActor, a bounded residual around
     # _BOX_CATCH_PHASE_PRIORS. True = PriorFreeCostActor, cost weights
@@ -615,6 +621,8 @@ class AcmpcBoxCatchConfig:
                 f"phase_priors must have {N_CONTROL_PHASES} rows (one per "
                 f"CatchControlPhase), got {len(self.phase_priors)}"
             )
+        if self.use_prior_free_actor and self.weight_parameterization != "bounded_residual":
+            raise ValueError("weight_parameterization is not used by the prior-free actor")
         if self.domain_parameters is not None and not np.isclose(
             self.squeeze.box_half_y, self.domain_parameters.half_size[1]
         ):
@@ -680,17 +688,22 @@ class BoxCatchSummary:
     # bound (|v| >= 0.98*mpc_velocity_limit).
     velocity_saturation_fraction: float
     mean_mpc_solve_time_s: float
-    # Fraction of (control step x cost dim x horizon step) actor-output
-    # weight samples at/near AdaptiveCostActor's hard clamp bounds
-    # [1e-3, 500.0] -- a weight pinned at a bound means the residual wanted
-    # to move further than delta_fraction/the clamp allowed.
+    maximum_hessian_condition_number: float
+    minimum_hessian_eigenvalue: float
+    maximum_linear_solve_residual: float
+    # Fraction of pre-clip weight samples that actually crossed the configured
+    # lower/upper hard bound. Both are zero when the corresponding bound is
+    # None; the removed-value fields quantify the clip's magnitude.
     weight_lower_bound_hit_fraction: float
     weight_upper_bound_hit_fraction: float
+    mean_weight_clip_removed: float
+    max_weight_clip_removed: float
+    weight_statistics: dict
     # Learning diagnostics (see the exploration-collapse investigation):
     # how far the actor's learned residual actually moves the cost weights
     # off their phase prior, and what exploration noise is really in use.
-    # Recovered exactly from weights/phase_prior rather than a second
-    # forward pass: weights = base * (1 + delta_fraction * tanh(net(obs))).
+    # Recovered exactly from weights/phase_prior rather than a second forward
+    # pass: abs(weights / phase_prior - 1), valid for either parameterization.
     mean_abs_actor_residual: float
     mean_abs_actor_residual_per_cost: tuple[float, ...]
     effective_action_std: float
@@ -717,6 +730,20 @@ class BoxCatchSummary:
     # mean_critic_loss/mean_entropy/mean_approximate_kl above, from the PPO
     # updates that did run).
     mean_actor_output_variation: float
+    target_kl_stop_count: int
+    online_delta_clip_count: int
+    kl_projection_count: int
+    kl_rollback_count: int
+    cumulative_delta_clip_count: int
+    mean_raw_actor_parameter_delta: float
+    mean_applied_actor_parameter_delta: float
+    cumulative_actor_parameter_delta: float
+    actor_parameter_path_length: float
+    actor_path_displacement_ratio: float
+    mean_ppo_clip_fraction: float
+    raw_actor_parameter_deltas: tuple[float, ...]
+    applied_actor_parameter_deltas: tuple[float, ...]
+    approximate_kls: tuple[float, ...]
     # Fraction of HOLD-phase control steps where each strict_stable_contact
     # sub-condition broke (see the HOLD branch above) -- 0.0 when HOLD was
     # never reached. Distinguishes an insufficient-grip hold break (force)
@@ -1095,13 +1122,6 @@ def _smoothstep(value: float) -> float:
     return value * value * (3.0 - 2.0 * value)
 
 
-# Mirrors AdaptiveCostActor.forward's hard clamp in
-# control/mpc/online_actor_critic.py (torch.clamp(weights, min=1e-3,
-# max=500.0)) -- not re-exported from that module, so duplicated here only
-# for the weight_lower/upper_bound_hit_fraction diagnostic below (item 9).
-_WEIGHT_CLAMP_MIN = 1e-3
-_WEIGHT_CLAMP_MAX = 500.0
-
 def _cost_contributions(
     *,
     weights: dict[str, np.ndarray],
@@ -1159,6 +1179,50 @@ def _cost_contributions(
             "raw": raw[name],
             "weighted": weight_first_step * raw[name],
         }
+    return result
+
+
+def _summarize_weight_samples(
+    samples: dict[str, list[tuple[np.ndarray, np.ndarray]]],
+) -> dict:
+    """Compact phase/cost/horizon statistics for long-run JSON analysis."""
+
+    result: dict = {}
+    for phase, phase_samples in samples.items():
+        if not phase_samples:
+            continue
+        weights = np.stack([sample[0] for sample in phase_samples])
+        priors = np.stack([sample[1] for sample in phase_samples])[:, None, :]
+        ratios = weights / np.maximum(priors, 1e-12)
+        phase_result: dict = {}
+        for index, name in enumerate(COST_NAMES):
+            values = weights[:, :, index].reshape(-1)
+            residuals = (ratios[:, :, index] - 1.0).reshape(-1)
+            phase_result[name] = {
+                "mean": float(np.mean(values)),
+                "median": float(np.median(values)),
+                "p05": float(np.percentile(values, 5)),
+                "p95": float(np.percentile(values, 95)),
+                "p99": float(np.percentile(values, 99)),
+                "maximum": float(np.max(values)),
+                "prior_ratio_mean": float(np.mean(ratios[:, :, index])),
+                "residual_mean": float(np.mean(residuals)),
+                "residual_p05": float(np.percentile(residuals, 5)),
+                "residual_p95": float(np.percentile(residuals, 95)),
+                "maximum_absolute_residual": float(np.max(np.abs(residuals))),
+                "horizon_mean": tuple(
+                    float(value) for value in np.mean(weights[:, :, index], axis=0)
+                ),
+            }
+        common_scale = np.mean(np.log(np.maximum(ratios, 1e-30)), axis=2).reshape(-1)
+        phase_result["common_scale"] = {
+            "mean": float(np.mean(common_scale)),
+            "median": float(np.median(common_scale)),
+            "p95": float(np.percentile(common_scale, 95)),
+            "p99": float(np.percentile(common_scale, 99)),
+            "maximum": float(np.max(common_scale)),
+        }
+        result[phase] = phase_result
     return result
 
 
@@ -1511,6 +1575,12 @@ def run_box_catch(
             weight_delta_fraction=config.weight_delta_fraction,
             maximum_online_actor_delta=config.maximum_online_actor_delta,
             maximum_cumulative_actor_delta=config.maximum_cumulative_actor_delta,
+            weight_parameterization=config.weight_parameterization,
+            weight_clip_min=config.weight_clip_min,
+            weight_clip_max=config.weight_clip_max,
+            target_kl=config.target_kl,
+            clip_ratio=config.clip_ratio,
+            normalize_returns=config.normalize_returns,
             use_prior_free_actor=config.use_prior_free_actor,
             prior_free_initial_weights=config.prior_free_initial_weights,
             entropy_coef=config.entropy_coef,
@@ -1530,6 +1600,13 @@ def run_box_catch(
             "gamma": learner.config.gamma,
             "gae_lambda": learner.config.gae_lambda,
             "clip_range": learner.config.clip_ratio,
+            "target_kl": learner.config.target_kl,
+            "maximum_online_actor_delta": learner.config.maximum_online_actor_delta,
+            "maximum_cumulative_actor_delta": learner.config.maximum_cumulative_actor_delta,
+            "weight_parameterization": learner.config.weight_parameterization,
+            "weight_clip_min": learner.config.weight_clip_min,
+            "weight_clip_max": learner.config.weight_clip_max,
+            "normalize_returns": learner.config.normalize_returns,
             "entropy_coef": learner.config.entropy_coef,
             "value_coef": learner.config.value_loss_coefficient,
         }
@@ -1798,9 +1875,24 @@ def run_box_catch(
     velocity_saturation_samples = 0
     velocity_total_samples = 0
     mpc_solve_time_total_s = 0.0
+    hessian_condition_numbers: list[float] = []
+    hessian_minimum_eigenvalues: list[float] = []
+    linear_solve_residuals: list[float] = []
+    excessive_weight_ratio_steps = 0
+    ill_conditioned_hessian_steps = 0
     weight_lower_hit_samples = 0
     weight_upper_hit_samples = 0
     weight_total_samples = 0
+    weight_clip_removed_samples: list[float] = []
+    weight_samples_by_phase: dict[str, list[tuple[np.ndarray, np.ndarray]]] = {
+        phase.value: []
+        for phase in (
+            CatchPhase.INTERCEPT,
+            CatchPhase.PRE_IMPACT,
+            CatchPhase.CAPTURE,
+            CatchPhase.HOLD,
+        )
+    }
     residual_samples: dict[str, list[float]] = {name: [] for name in COST_NAMES}
     actor_residual_samples: list[np.ndarray] = []
     actor_output_variation_sum = 0.0
@@ -2790,6 +2882,33 @@ def run_box_catch(
                 )
                 _act_duration_s = time.perf_counter() - _act_start
                 mpc_solve_time_total_s += _act_duration_s
+                hessian_condition_numbers.append(action.hessian_condition_number)
+                hessian_minimum_eigenvalues.append(action.hessian_min_eigenvalue)
+                linear_solve_residuals.append(action.linear_solve_residual)
+                if not config.use_prior_free_actor:
+                    _largest_weight_ratio = max(
+                        float(
+                            np.max(
+                                np.asarray(action.weights[_name], dtype=float)
+                                / max(float(action.phase_prior[_index]), 1e-12)
+                            )
+                        )
+                        for _index, _name in enumerate(COST_NAMES)
+                    )
+                    excessive_weight_ratio_steps = (
+                        excessive_weight_ratio_steps + 1
+                        if _largest_weight_ratio >= 1e4
+                        else 0
+                    )
+                ill_conditioned_hessian_steps = (
+                    ill_conditioned_hessian_steps + 1
+                    if action.hessian_condition_number >= 1e10
+                    else 0
+                )
+                if excessive_weight_ratio_steps >= 100:
+                    raise RuntimeError("weight/prior ratio exceeded 1e4 for 100 control steps")
+                if ill_conditioned_hessian_steps >= 100:
+                    raise RuntimeError("MPC Hessian condition number exceeded 1e10 for 100 steps")
 
                 if control_step_count % config.wandb_log_interval == 0:
                     _wandb_step = global_step_start + control_step_count
@@ -2797,9 +2916,13 @@ def run_box_catch(
                         {
                             **build_mpc_weight_log(
                                 final_weights=action.weights,
+                                preclip_weights=action.preclip_weights,
                                 phase_prior=current_blended_prior,
                                 phase_id=int(control_index),
                                 solver_time_s=_act_duration_s,
+                                hessian_condition_number=action.hessian_condition_number,
+                                hessian_min_eigenvalue=action.hessian_min_eigenvalue,
+                                linear_solve_residual=action.linear_solve_residual,
                             ),
                             **build_contact_log(contact=contact, box_velocity=box_velocity),
                         },
@@ -2821,19 +2944,29 @@ def run_box_catch(
                 for _name in COST_NAMES:
                     residual_samples[_name].append(_contributions[_name]["raw"])
                     _weight_array = action.weights[_name]
+                    _preclip_array = action.preclip_weights[_name]
                     weight_total_samples += _weight_array.size
-                    weight_lower_hit_samples += int(np.sum(_weight_array <= _WEIGHT_CLAMP_MIN * 1.001))
-                    weight_upper_hit_samples += int(np.sum(_weight_array >= _WEIGHT_CLAMP_MAX * 0.999))
+                    if config.weight_clip_min is not None:
+                        weight_lower_hit_samples += int(
+                            np.sum(_preclip_array < config.weight_clip_min)
+                        )
+                    if config.weight_clip_max is not None:
+                        weight_upper_hit_samples += int(
+                            np.sum(_preclip_array > config.weight_clip_max)
+                        )
+                    weight_clip_removed_samples.extend(
+                        np.abs(_preclip_array - _weight_array).tolist()
+                    )
                 _prior_row = np.maximum(np.asarray(action.phase_prior, dtype=float), 1e-9)
                 _weight_rows = np.stack(
                     [np.asarray(action.weights[_name], dtype=float) for _name in COST_NAMES],
                     axis=1,
                 )
+                weight_samples_by_phase[phase.value].append(
+                    (_weight_rows.copy(), np.asarray(action.phase_prior, dtype=float).copy())
+                )
                 actor_residual_samples.append(
-                    np.abs(
-                        (_weight_rows / _prior_row - 1.0)
-                        / max(config.weight_delta_fraction, 1e-9)
-                    ).mean(axis=0)
+                    np.abs(_weight_rows / _prior_row - 1.0).mean(axis=0)
                 )
                 _current_mean_weights = np.array(
                     [float(np.mean(action.weights[_name])) for _name in COST_NAMES]
@@ -3515,12 +3648,30 @@ def run_box_catch(
         mean_mpc_solve_time_s=(
             float(mpc_solve_time_total_s / control_step_count) if control_step_count else 0.0
         ),
+        maximum_hessian_condition_number=(
+            float(np.max(hessian_condition_numbers)) if hessian_condition_numbers else 0.0
+        ),
+        minimum_hessian_eigenvalue=(
+            float(np.min(hessian_minimum_eigenvalues))
+            if hessian_minimum_eigenvalues
+            else 0.0
+        ),
+        maximum_linear_solve_residual=(
+            float(np.max(linear_solve_residuals)) if linear_solve_residuals else 0.0
+        ),
         weight_lower_bound_hit_fraction=(
             float(weight_lower_hit_samples / weight_total_samples) if weight_total_samples else 0.0
         ),
         weight_upper_bound_hit_fraction=(
             float(weight_upper_hit_samples / weight_total_samples) if weight_total_samples else 0.0
         ),
+        mean_weight_clip_removed=(
+            float(np.mean(weight_clip_removed_samples)) if weight_clip_removed_samples else 0.0
+        ),
+        max_weight_clip_removed=(
+            float(np.max(weight_clip_removed_samples)) if weight_clip_removed_samples else 0.0
+        ),
+        weight_statistics=_summarize_weight_samples(weight_samples_by_phase),
         mean_abs_actor_residual=(
             float(np.mean(actor_residual_samples)) if actor_residual_samples else 0.0
         ),
@@ -3554,6 +3705,34 @@ def run_box_catch(
             if actor_output_variation_count
             else 0.0
         ),
+        target_kl_stop_count=sum(u.target_kl_stopped for u in updates),
+        online_delta_clip_count=sum(u.online_delta_clipped for u in updates),
+        kl_projection_count=sum(u.kl_projection_count for u in updates),
+        kl_rollback_count=sum(u.kl_rollback_count for u in updates),
+        cumulative_delta_clip_count=sum(u.cumulative_delta_clipped for u in updates),
+        mean_raw_actor_parameter_delta=(
+            float(np.mean([u.raw_actor_parameter_delta for u in updates])) if updates else 0.0
+        ),
+        mean_applied_actor_parameter_delta=(
+            float(np.mean([u.actor_parameter_delta for u in updates])) if updates else 0.0
+        ),
+        cumulative_actor_parameter_delta=(
+            updates[-1].cumulative_actor_parameter_delta if updates else 0.0
+        ),
+        actor_parameter_path_length=(
+            updates[-1].actor_parameter_path_length
+            if updates
+            else learner.actor_parameter_path_length
+        ),
+        actor_path_displacement_ratio=(
+            updates[-1].actor_path_displacement_ratio if updates else 0.0
+        ),
+        mean_ppo_clip_fraction=(
+            float(np.mean([u.ppo_clip_fraction for u in updates])) if updates else 0.0
+        ),
+        raw_actor_parameter_deltas=tuple(u.raw_actor_parameter_delta for u in updates),
+        applied_actor_parameter_deltas=tuple(u.actor_parameter_delta for u in updates),
+        approximate_kls=tuple(u.approximate_kl for u in updates),
         hold_force_violation_fraction=(
             float(hold_force_violation_count / hold_step_count) if hold_step_count else 0.0
         ),

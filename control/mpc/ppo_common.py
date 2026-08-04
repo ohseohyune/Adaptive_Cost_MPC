@@ -47,6 +47,23 @@ class PPOUpdateSummary:
     # rollout_size configurations. 0.0 when the caller never computes them.
     advantage_std: float = 0.0
     actor_grad_norm: float = 0.0
+    # Constraint-ablation diagnostics. Defaults keep the legacy PPO cost
+    # adapter and old log readers source-compatible.
+    epochs_requested: int = 0
+    target_kl_stopped: bool = False
+    skipped_epochs: int = 0
+    raw_actor_parameter_delta: float = 0.0
+    online_delta_clipped: bool = False
+    actor_update_applied_fraction: float = 1.0
+    pre_projection_kl: float = 0.0
+    kl_projection_count: int = 0
+    kl_rollback_count: int = 0
+    projection_removed_delta: float = 0.0
+    cumulative_actor_parameter_delta: float = 0.0
+    cumulative_delta_clipped: bool = False
+    actor_parameter_path_length: float = 0.0
+    actor_path_displacement_ratio: float = 0.0
+    ppo_clip_fraction: float = 0.0
 
 
 def generalized_advantage_estimate(
