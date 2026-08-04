@@ -42,9 +42,22 @@ def get_ee_transform(data: mujoco.MjData, arm: SerialArm) -> np.ndarray:
 
 def make_transform(position: np.ndarray, rotation: np.ndarray) -> np.ndarray:
     """Build a homogeneous transform from position and rotation matrix."""
+    position = np.asarray(position, dtype=float)
+    rotation = np.asarray(rotation, dtype=float)
+    if position.size != 3:
+        raise ValueError("position must contain exactly 3 elements.")
+    if rotation.shape != (3, 3):
+        raise ValueError("rotation must have shape (3, 3).")
+    if not np.all(np.isfinite(position)) or not np.all(np.isfinite(rotation)):
+        raise ValueError("position and rotation must contain only finite values.")
+    if not np.allclose(rotation.T @ rotation, np.eye(3), atol=1e-6, rtol=0.0):
+        raise ValueError("rotation must be an orthonormal matrix.")
+    if not np.isclose(np.linalg.det(rotation), 1.0, atol=1e-6, rtol=0.0):
+        raise ValueError("rotation must have determinant +1.")
+
     transform = np.eye(4)
-    transform[:3, :3] = np.asarray(rotation, dtype=float).reshape(3, 3)
-    transform[:3, 3] = np.asarray(position, dtype=float).reshape(3)
+    transform[:3, :3] = rotation
+    transform[:3, 3] = position.reshape(3)
     return transform
 
 

@@ -1,0 +1,987 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Actor-Critic MPC Lab</title>
+<style>
+  :root { --blue: #3182F7; --ink: #3A3A3A; --paper: #FFFFFF; }
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body {
+    background: var(--paper); color: var(--ink); min-height: 100vh;
+    font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+    display: flex; flex-direction: column; align-items: center; padding: 24px 20px;
+  }
+  button, input { font-family: inherit; color: inherit; }
+  .app { width: 100%; max-width: 1400px; display: grid; grid-template-columns: 1fr 360px; gap: 20px; }
+  @media (max-width: 900px) { .app { grid-template-columns: 1fr; } }
+
+  /* ── common panel ── */
+  .blk { background: var(--paper); border: 2px solid var(--ink); position: relative; }
+  .blk-tag {
+    position: absolute; top: -11px; left: 12px; background: var(--paper);
+    padding: 0 8px; font-size: 11px; font-weight: 700; letter-spacing: 2px;
+  }
+  .blk-tag .sub { font-weight: 400; letter-spacing: 1px; }
+  .card { padding: 18px; padding-top: 22px; margin-top: 10px; }
+
+  /* ── header ── */
+  header {
+    grid-column: 1 / -1; display: flex; align-items: flex-start;
+    justify-content: space-between; padding-bottom: 4px; gap: 16px; flex-wrap: wrap;
+  }
+  header h1 { font-size: 19px; font-weight: 800; letter-spacing: 3px; text-transform: uppercase; }
+  header h1::before {
+    content: ""; display: inline-block; width: 14px; height: 14px;
+    background: var(--blue); margin-right: 10px;
+  }
+  header .sub { font-size: 10px; letter-spacing: 1.5px; margin-top: 5px; opacity: .8; }
+  .conn-row { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
+  .conn { font-size: 10px; letter-spacing: 1px; display: flex; align-items: center; gap: 6px; }
+  .conn .dot { width: 7px; height: 7px; background: var(--ink); opacity: .3; flex: 0 0 auto; }
+  .conn.up .dot { background: var(--blue); opacity: 1; }
+  .conn a { color: var(--blue); text-decoration: none; font-weight: 700; }
+  .conn a:hover { text-decoration: underline; }
+
+  /* ── STOP ── */
+  #stopbtn {
+    background: var(--paper); color: var(--ink); border: 3px solid var(--ink);
+    font-size: 14px; font-weight: 800; letter-spacing: 2px;
+    padding: 11px 22px; cursor: pointer; position: relative; overflow: hidden;
+  }
+  #stopbtn:disabled { opacity: .3; cursor: default; border-style: dashed; }
+  #stopbtn .fill {
+    position: absolute; inset: 0; background: var(--ink);
+    transform: scaleX(0); transform-origin: left; pointer-events: none;
+  }
+  #stopbtn.holding .fill { transform: scaleX(1); transition: transform .5s linear; }
+  #stopbtn .lbl { position: relative; z-index: 1; }
+  #stopbtn.holding .lbl { color: var(--paper); }
+  #stopbtn small { display: block; font-size: 9px; font-weight: 400; letter-spacing: 1px; margin-top: 2px; }
+
+  /* ── phase flow ── */
+  .phases {
+    grid-column: 1 / -1; display: flex; align-items: center;
+    border: 2px solid var(--ink); padding: 16px 22px; gap: 0; margin-top: 8px; flex-wrap: wrap;
+  }
+  .phase {
+    border: 2px solid var(--ink); padding: 9px 18px; text-align: center;
+    font-size: 12px; font-weight: 700; letter-spacing: 2px; flex: 0 0 auto;
+    background: var(--paper); color: var(--ink);
+  }
+  .phase.pending { border-style: dashed; opacity: .35; }
+  .phase.active { background: var(--blue); border-color: var(--blue); color: var(--paper); }
+  .phase.done { background: var(--ink); color: var(--paper); }
+  .phase .num { display: block; font-size: 9px; font-weight: 400; letter-spacing: 1px; margin-bottom: 2px; }
+  .flow { flex: 1 1 0; height: 2px; background: var(--ink); position: relative; min-width: 24px; opacity: .35; }
+  .flow::after {
+    content: ""; position: absolute; right: -1px; top: -5px;
+    border-left: 9px solid var(--ink); border-top: 6px solid transparent;
+    border-bottom: 6px solid transparent;
+  }
+  .flow.live { background: var(--blue); opacity: 1; }
+  .flow.live::after { border-left-color: var(--blue); }
+
+  /* ── left column ── */
+  .left { display: flex; flex-direction: column; gap: 20px; min-width: 0; }
+  .chart-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
+  .chart-title { font-size: 10.5px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; }
+  .chart-legend { font-size: 9.5px; letter-spacing: .3px; display: flex; gap: 10px; }
+  .chart-legend span { display: inline-flex; align-items: center; gap: 4px; }
+  .chart-legend i { width: 9px; height: 2px; display: inline-block; }
+  .chart-legend i.dash { border-top: 2px dashed var(--ink); background: none; height: 0; }
+  .rangebtns { display: flex; gap: 0; }
+  .rangebtns button {
+    border: 1px solid var(--ink); background: var(--paper); color: var(--ink);
+    font-size: 9px; font-weight: 700; letter-spacing: .5px; padding: 3px 8px; cursor: pointer;
+  }
+  .rangebtns button + button { border-left: none; }
+  .rangebtns button.on { background: var(--ink); color: var(--paper); }
+
+  .metrics-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 12px; }
+  @media (max-width: 640px) { .metrics-grid { grid-template-columns: 1fr; } }
+  .chart-box { position: relative; }
+  .chart-box canvas { width: 100%; height: 130px; display: block; border: 1px solid var(--ink); background: var(--paper); }
+  .chart-val { position: absolute; top: 20px; right: 4px; font-size: 13px; font-weight: 800; color: var(--blue); font-variant-numeric: tabular-nums; pointer-events: none; }
+  .tooltip {
+    position: fixed; background: var(--ink); color: var(--paper); font-size: 10.5px;
+    padding: 5px 8px; letter-spacing: .3px; pointer-events: none; z-index: 50; display: none;
+    line-height: 1.5; font-variant-numeric: tabular-nums;
+  }
+
+  .extra-pills { display: flex; gap: 0; flex-wrap: wrap; margin-top: 16px; margin-bottom: 8px; }
+  .extra-pill {
+    border: 2px solid var(--ink); background: var(--paper); color: var(--ink);
+    font-size: 9.5px; font-weight: 700; letter-spacing: .8px; padding: 6px 10px; cursor: pointer;
+  }
+  .extra-pill + .extra-pill { margin-left: -2px; }
+  .extra-pill.on { background: var(--blue); border-color: var(--blue); color: var(--paper); position: relative; z-index: 1; }
+
+  .monrow { display: grid; grid-template-columns: 1fr; gap: 10px; }
+  .mon-readouts { display: flex; gap: 10px; margin-top: 10px; }
+  .mon-box { flex: 1; border: 2px solid var(--ink); padding: 8px 10px; text-align: center; }
+  .mon-box .k { font-size: 9px; font-weight: 700; letter-spacing: 1px; }
+  .mon-box .v { font-size: 17px; font-weight: 800; font-variant-numeric: tabular-nums; margin-top: 2px; }
+
+  /* ── right column ── */
+  .col { display: flex; flex-direction: column; gap: 20px; }
+
+  .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .act {
+    border: 2px solid var(--ink); background: var(--paper); color: var(--ink);
+    padding: 12px 8px; cursor: pointer; text-align: center; position: relative;
+  }
+  .act:disabled { opacity: .3; cursor: default; border-style: dashed; }
+  .act .t { font-size: 13px; font-weight: 800; letter-spacing: 1.5px; }
+  .act .d { font-size: 9.5px; margin-top: 4px; line-height: 1.4; letter-spacing: .2px; }
+  .act.primary { background: var(--blue); border-color: var(--blue); color: var(--paper); }
+  .act:active:not(:disabled) { background: var(--ink); border-color: var(--ink); color: var(--paper); }
+  .act .req { position: absolute; bottom: -8px; left: 50%; transform: translateX(-50%); font-size: 8px; font-weight: 700; letter-spacing: .5px; background: var(--paper); padding: 0 4px; white-space: nowrap; }
+  .act .req.fail { color: var(--blue); }
+
+  .stopseq { margin-top: 14px; font-size: 10.5px; letter-spacing: .3px; display: none; }
+  .stopseq.show { display: block; }
+  .stopseq .step { padding: 3px 0; opacity: .35; }
+  .stopseq .step.on { opacity: 1; font-weight: 700; color: var(--blue); }
+  .stopseq .step.past { opacity: .6; text-decoration: line-through; }
+
+  .param + .param { margin-top: 16px; }
+  .param .name-row { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 7px; }
+  .param .name { font-size: 10.5px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; }
+  .param .scope-tag { font-size: 8.5px; font-weight: 700; letter-spacing: .8px; padding: 1px 5px; border: 1px solid; }
+  .param .scope-tag.immediate { color: var(--blue); border-color: var(--blue); }
+  .param .scope-tag.next_run { color: var(--ink); border-color: var(--ink); opacity: .65; }
+  .slider-row { display: flex; align-items: center; gap: 8px; }
+  .slider-row .val {
+    min-width: 74px; text-align: center; font-size: 12.5px; font-weight: 800;
+    border: 2px solid var(--blue); color: var(--blue); padding: 4px 2px;
+    font-variant-numeric: tabular-nums; background: none;
+  }
+  .slider-row input[type=number] { border: 2px solid var(--blue); }
+  .stepbtn {
+    width: 28px; height: 28px; border: 2px solid var(--ink); background: var(--paper);
+    color: var(--ink); font-size: 14px; font-weight: 800; cursor: pointer; flex: 0 0 auto;
+  }
+  .stepbtn:active { background: var(--ink); color: var(--paper); }
+  input[type=range] { flex: 1; accent-color: var(--blue); height: 26px; cursor: pointer; }
+  input:disabled, .stepbtn:disabled, input[type=range]:disabled { opacity: .3; cursor: default; }
+  .param.locked input, .param.locked .stepbtn { border-style: dashed; }
+  .param-num { min-width: 74px; text-align: right; font-size: 12.5px; font-weight: 800; border: 2px solid var(--ink); padding: 5px 6px; background: var(--paper); }
+
+  .kpi-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 4px; }
+  .kpi { border: 2px solid var(--ink); padding: 10px; text-align: center; }
+  .kpi.hero { grid-column: 1 / -1; padding: 16px; }
+  .kpi .k { font-size: 9.5px; font-weight: 700; letter-spacing: 1.2px; }
+  .kpi .v { font-size: 20px; font-weight: 800; font-variant-numeric: tabular-nums; margin-top: 3px; }
+  .kpi.hero .v { font-size: 38px; }
+  .kpi .st { font-size: 9px; font-weight: 700; letter-spacing: 1px; margin-top: 3px; min-height: 11px; }
+  .kpi.status-good { border-color: var(--blue); }
+  .kpi.status-good .st { color: var(--blue); }
+  .kpi.status-improving .st { color: var(--blue); }
+  .kpi.status-unstable, .kpi.status-below_target { }
+  .kpi.status-unstable .st, .kpi.status-below_target .st { color: var(--ink); }
+
+  .ck-row { display: flex; justify-content: space-between; font-size: 11px; padding: 5px 0; gap: 10px; letter-spacing: .2px; }
+  .ck-row .k { opacity: .65; }
+  .ck-row .v { font-weight: 700; text-align: right; word-break: break-all; }
+  .ck-badge { display: inline-block; padding: 2px 8px; font-size: 9.5px; font-weight: 800; letter-spacing: 1px; border: 2px solid var(--ink); margin-top: 8px; }
+  .ck-badge.success { background: var(--ink); color: var(--paper); }
+  .ck-badge.failed { border-color: var(--blue); color: var(--blue); }
+  .ck-toggle { display: flex; align-items: center; justify-content: space-between; margin-top: 12px; font-size: 10.5px; letter-spacing: .5px; }
+  .switch { width: 34px; height: 18px; border: 2px solid var(--ink); position: relative; cursor: pointer; flex: 0 0 auto; }
+  .switch .knob { position: absolute; top: 1px; left: 1px; width: 10px; height: 10px; background: var(--ink); transition: left .15s; }
+  .switch.on { border-color: var(--blue); }
+  .switch.on .knob { left: 17px; background: var(--blue); }
+  .ck-list { margin-top: 10px; max-height: 130px; overflow-y: auto; border-top: 1px solid var(--ink); }
+  .ck-list .item { display: flex; justify-content: space-between; gap: 8px; font-size: 10px; padding: 6px 0; border-bottom: 1px dashed var(--ink); }
+  .ck-list button { border: 1px solid var(--ink); background: var(--paper); font-size: 9px; font-weight: 700; padding: 3px 6px; cursor: pointer; flex: 0 0 auto; }
+  .ck-list button:hover { background: var(--ink); color: var(--paper); }
+
+  .toast {
+    position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(80px);
+    background: var(--ink); color: var(--paper); padding: 12px 24px;
+    font-weight: 700; font-size: 12.5px; letter-spacing: 1px;
+    opacity: 0; transition: all .3s; pointer-events: none; border: 2px solid var(--ink); z-index: 100;
+  }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  .toast.err { background: var(--paper); color: var(--blue); border-color: var(--blue); }
+
+  .media-row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 10px; }
+  .media-empty { font-size: 10.5px; opacity: .5; letter-spacing: .3px; border: 2px dashed var(--ink); padding: 10px; text-align: center; flex: 1; }
+  .media-row img { width: 90px; height: 68px; object-fit: cover; border: 1px solid var(--ink); }
+
+  a.wblink { color: var(--blue); font-size: 10.5px; font-weight: 700; letter-spacing: .5px; text-decoration: none; }
+  a.wblink:hover { text-decoration: underline; }
+
+  button:focus-visible, input:focus-visible, .switch:focus-visible, .extra-pill:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div>
+      <h1>Actor–Critic MPC Lab</h1>
+      <div class="sub">MUJOCO CONTROL · POLICY LEARNING · MPC EVALUATION</div>
+    </div>
+    <div class="conn-row">
+      <div class="conn" id="conn-backend"><span class="dot"></span><span>BACKEND</span></div>
+      <div class="conn" id="conn-wandb"><span class="dot"></span><span>W&amp;B</span></div>
+      <a class="wblink" id="wandb-link" href="#" target="_blank" rel="noopener" style="display:none">OPEN RUN ↗</a>
+      <button id="stopbtn" disabled><span class="fill"></span><span class="lbl">STOP TRAINING<small>HOLD 0.5s</small></span></button>
+    </div>
+  </header>
+
+  <div class="phases" id="phases">
+    <div class="phase" data-p="CONFIG"><span class="num">01</span>CONFIG</div>
+    <div class="flow" data-b="CONFIG"></div>
+    <div class="phase" data-p="TRAIN"><span class="num">02</span>TRAIN</div>
+    <div class="flow" data-b="TRAIN"></div>
+    <div class="phase" data-p="MPC_EVAL"><span class="num">03</span>MPC EVAL</div>
+    <div class="flow" data-b="MPC_EVAL"></div>
+    <div class="phase" data-p="CHECKPOINT"><span class="num">04</span>CHECKPOINT</div>
+  </div>
+
+  <div class="left">
+    <div class="blk card">
+      <div class="blk-tag">TRAINING METRICS <span class="sub">· W&amp;B / LIVE</span></div>
+      <div class="metrics-grid" id="metrics-grid"></div>
+      <div class="extra-pills" id="extra-pills"></div>
+      <div class="metrics-grid" id="extra-grid" style="grid-template-columns: 1fr;"></div>
+    </div>
+
+    <div class="blk card">
+      <div class="blk-tag">MPC / ROBOT MONITOR <span class="sub">· STATE VECTOR · REF vs ACTUAL vs PREDICTED</span></div>
+      <div class="monrow" id="mpc-grid"></div>
+      <div class="mon-readouts">
+        <div class="mon-box"><div class="k">CONTROL ERROR</div><div class="v" id="mpc-error">—</div></div>
+        <div class="mon-box"><div class="k">MPC COST</div><div class="v" id="mpc-cost-readout">—</div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col">
+    <div class="blk card">
+      <div class="blk-tag">CONTROLLER <span class="sub">· TRAINING ACTIONS</span></div>
+      <div class="actions">
+        <button class="act" id="btn-start"><div class="t">START</div><div class="d">학습 시작</div></button>
+        <button class="act" id="btn-pause"><div class="t">PAUSE</div><div class="d">일시정지</div></button>
+        <button class="act" id="btn-resume"><div class="t">RESUME</div><div class="d">재개</div></button>
+        <button class="act" id="btn-evaluate"><div class="t">EVALUATE</div><div class="d">MPC rollout 실행</div></button>
+        <button class="act" id="btn-save"><div class="t">SAVE</div><div class="d">checkpoint 저장</div></button>
+        <button class="act" id="btn-load"><div class="t">LOAD</div><div class="d">checkpoint 불러오기</div></button>
+      </div>
+      <div class="stopseq" id="stopseq">
+        <div class="step" data-phase="STOP_REQUESTED">STOP REQUESTED</div>
+        <div class="step" data-phase="FINISH_UPDATE">FINISH CURRENT UPDATE</div>
+        <div class="step" data-phase="SAVING">SAVE CHECKPOINT</div>
+        <div class="step" data-phase="SYNCING_WANDB">SYNC W&amp;B</div>
+        <div class="step" data-phase="STOPPED">STOPPED</div>
+      </div>
+    </div>
+
+    <div class="blk card">
+      <div class="blk-tag">TRAINING PARAMETERS</div>
+      <div id="training-params"></div>
+    </div>
+
+    <div class="blk card">
+      <div class="blk-tag">MPC PARAMETERS</div>
+      <div id="mpc-params"></div>
+    </div>
+
+    <div class="blk card">
+      <div class="blk-tag">FEEDBACK <span class="sub">· LIVE METRICS</span></div>
+      <div class="kpi-grid">
+        <div class="kpi hero" id="kpi-success"><div class="k">SUCCESS RATE</div><div class="v" id="v-success">—</div><div class="st" id="st-success"></div></div>
+        <div class="kpi"><div class="k">CURRENT REWARD</div><div class="v" id="v-reward">—</div></div>
+        <div class="kpi"><div class="k">BEST REWARD</div><div class="v" id="v-best">—</div></div>
+        <div class="kpi"><div class="k">EPISODE</div><div class="v" id="v-episode">—</div></div>
+        <div class="kpi"><div class="k">GLOBAL STEP</div><div class="v" id="v-step">—</div></div>
+        <div class="kpi"><div class="k">MPC COST</div><div class="v" id="v-mpccost">—</div></div>
+      </div>
+    </div>
+
+    <div class="blk card">
+      <div class="blk-tag">CHECKPOINT</div>
+      <div class="ck-row"><div class="k">LAST SAVED</div><div class="v" id="ck-time">—</div></div>
+      <div class="ck-row"><div class="k">FILENAME</div><div class="v" id="ck-name">—</div></div>
+      <div class="ck-row"><div class="k">PATH</div><div class="v" id="ck-path">—</div></div>
+      <div class="ck-row"><div class="k">EPISODE / STEP</div><div class="v" id="ck-epstep">—</div></div>
+      <div class="ck-row"><div class="k">BEST</div><div class="v" id="ck-best">—</div></div>
+      <div id="ck-badge"></div>
+      <div class="ck-toggle">
+        <span>AUTO-SAVE ON EPISODE MILESTONES</span>
+        <div class="switch" id="ck-autosave" tabindex="0" role="switch" aria-checked="true"><div class="knob"></div></div>
+      </div>
+      <div class="ck-list" id="ck-list"></div>
+      <div class="blk-tag" style="position:static;display:block;margin-top:16px;padding:0;">W&amp;B MEDIA</div>
+      <div class="media-row" id="wandb-media"><div class="media-empty">NO IMAGES LOGGED YET</div></div>
+    </div>
+  </div>
+</div>
+<div class="tooltip" id="tooltip"></div>
+<div class="toast" id="toast"></div>
+
+<script>
+const $ = id => document.getElementById(id);
+const INK = "#3A3A3A", BLUE = "#3182F7";
+let S = null;           // latest /state snapshot
+let T = null;           // latest /telemetry snapshot
+let wsConnected = false;
+let pollTimer = null;
+
+/* ───────────────────────── transport: WS first, polling fallback ───────────────────────── */
+function startTransport() {
+  let ws;
+  try { ws = new WebSocket(`ws://${location.host}/ws`); }
+  catch (e) { return startPolling(); }
+
+  const wsTimeout = setTimeout(() => { try { ws.close(); } catch (e) {} }, 2500);
+  ws.onopen = () => { clearTimeout(wsTimeout); wsConnected = true; stopPolling(); };
+  ws.onmessage = ev => {
+    try {
+      const msg = JSON.parse(ev.data);
+      if (msg.type === "state") { S = msg.data; T = msg.telemetry; render(); }
+    } catch (e) { /* ignore malformed frame */ }
+  };
+  ws.onclose = ws.onerror = () => {
+    clearTimeout(wsTimeout);
+    if (wsConnected) { wsConnected = false; setBackendDown(); }
+    startPolling();
+    setTimeout(startTransport, 3000);
+  };
+}
+
+function startPolling() {
+  if (pollTimer) return;
+  const tick = async () => {
+    try {
+      const [rs, rt] = await Promise.all([fetch("/state"), fetch("/telemetry")]);
+      S = await rs.json(); T = await rt.json();
+      render();
+    } catch (e) { setBackendDown(); }
+    pollTimer = setTimeout(tick, 700);
+  };
+  tick();
+}
+function stopPolling() { if (pollTimer) { clearTimeout(pollTimer); pollTimer = null; } }
+
+function setBackendDown() {
+  if (S) S = { ...S, backendConnected: false };
+  $("conn-backend").classList.remove("up");
+}
+
+/* ───────────────────────── async action calls: pending/success/fail/retry ───────────────────────── */
+async function callAction(action, payload, btn) {
+  const reqTag = btn ? attachReqTag(btn, "…") : null;
+  try {
+    const r = await fetch("/action", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action, payload: payload || {} }),
+    });
+    const data = await r.json();
+    if (!data.ok) { showToast(data.error || "요청 실패", true); if (reqTag) reqTag.fail(data.error); return null; }
+    if (reqTag) reqTag.done();
+    return data;
+  } catch (e) {
+    showToast("네트워크 오류 — 재시도하세요", true);
+    if (reqTag) reqTag.fail("network error", true);
+    return null;
+  }
+}
+function attachReqTag(btn, label) {
+  const el = document.createElement("div");
+  el.className = "req"; el.textContent = label;
+  btn.appendChild(el);
+  return {
+    done: () => setTimeout(() => el.remove(), 900),
+    fail: (msg, retryable) => {
+      el.classList.add("fail");
+      el.textContent = retryable ? "FAILED — RETRY" : "FAILED";
+      setTimeout(() => el.remove(), 2200);
+    },
+  };
+}
+function showToast(msg, isErr) {
+  const t = $("toast");
+  t.textContent = msg; t.className = "toast show" + (isErr ? " err" : "");
+  setTimeout(() => t.classList.remove("show"), 2400);
+}
+async function postParams(payload) {
+  try {
+    const r = await fetch("/params", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
+    });
+    return await r.json();
+  } catch (e) { showToast("파라미터 전송 실패", true); return { ok: false }; }
+}
+
+/* ───────────────────────── controller buttons ───────────────────────── */
+const BUTTON_RULES = {
+  IDLE:         { start: "primary", load: true },
+  INITIALIZING: {},
+  RUNNING:      { pause: "primary", evaluate: true, save: true },
+  PAUSED:       { resume: "primary", evaluate: true, save: true, load: true },
+  EVALUATING:   {},
+  SAVING:       {},
+  STOPPING:     {},
+  COMPLETED:    { start: "primary", load: true },
+  ERROR:        { start: "primary", load: true },
+};
+const STOP_ENABLED_STATES = new Set(["RUNNING", "PAUSED", "EVALUATING", "SAVING"]);
+
+$("btn-start").onclick = () => {
+  const total = Number(S?.parameters?.totalEpisodes?.value) || 5000;
+  callAction("start", { totalEpisodes: total }, $("btn-start"));
+};
+$("btn-pause").onclick = () => callAction("pause", {}, $("btn-pause"));
+$("btn-resume").onclick = () => callAction("resume", {}, $("btn-resume"));
+$("btn-evaluate").onclick = () => callAction("evaluate", {}, $("btn-evaluate"));
+$("btn-save").onclick = () => {
+  const ep = S?.episode ?? 0, step = S?.globalStep ?? 0;
+  if (!confirm(`Save checkpoint at episode ${ep} / step ${step}?\n동일 파일명이 이미 있으면 덮어씁니다.`)) return;
+  callAction("save_checkpoint", {}, $("btn-save"));
+};
+$("btn-load").onclick = () => {
+  const list = S?.checkpointList || [];
+  if (!list.length) { showToast("불러올 checkpoint가 없습니다", true); return; }
+  const name = prompt(
+    "불러올 checkpoint 파일명:\n" + list.slice(0, 8).map(c => c.filename).join("\n"),
+    list[0].filename
+  );
+  if (!name) return;
+  if (!confirm(`Load "${name}"? 현재 episode/step 표시가 대체됩니다.`)) return;
+  callAction("load_checkpoint", { filename: name }, $("btn-load"));
+};
+
+function renderActions() {
+  const st = S?.trainingState || "IDLE";
+  const rules = BUTTON_RULES[st] || {};
+  [["start", "btn-start"], ["pause", "btn-pause"], ["resume", "btn-resume"],
+   ["evaluate", "btn-evaluate"], ["save", "btn-save"], ["load", "btn-load"]].forEach(([key, id]) => {
+    const el = $(id);
+    const rule = rules[key];
+    el.disabled = !rule;
+    el.classList.toggle("primary", rule === "primary");
+  });
+  const stopBtn = $("stopbtn");
+  stopBtn.disabled = !STOP_ENABLED_STATES.has(st);
+
+  const seq = $("stopseq");
+  seq.classList.toggle("show", st === "STOPPING");
+  seq.querySelectorAll(".step").forEach(el => {
+    const order = ["STOP_REQUESTED", "FINISH_UPDATE", "SAVING", "SYNCING_WANDB", "STOPPED"];
+    const cur = order.indexOf(S?.stopPhase);
+    const mine = order.indexOf(el.dataset.phase);
+    el.classList.toggle("on", mine === cur);
+    el.classList.toggle("past", cur >= 0 && mine < cur);
+  });
+}
+
+/* ───────────────────────── STOP: long-press ───────────────────────── */
+let holdTimer = null;
+const stopBtn = $("stopbtn");
+function armHold() {
+  if (stopBtn.disabled) return;
+  stopBtn.classList.add("holding");
+  holdTimer = setTimeout(() => {
+    callAction("stop", {}, null);
+    showToast("STOP TRAINING — checkpoint will be archived before exit");
+    disarmHold();
+  }, 500);
+}
+function disarmHold() {
+  stopBtn.classList.remove("holding");
+  if (holdTimer) { clearTimeout(holdTimer); holdTimer = null; }
+}
+stopBtn.addEventListener("pointerdown", armHold);
+stopBtn.addEventListener("pointerup", disarmHold);
+stopBtn.addEventListener("pointerleave", disarmHold);
+
+/* ───────────────────────── parameters ───────────────────────── */
+const TRAINING_PARAM_DEFS = [
+  { key: "learningRate", label: "Learning Rate", kind: "log", min: -6, max: -1, sciNotation: true },
+  { key: "totalEpisodes", label: "Total Episodes", kind: "linear", min: 100, max: 200000, step: 100, int: true },
+  { key: "batchSize", label: "Batch Size", kind: "linear", min: 16, max: 2048, step: 16, int: true },
+  { key: "gamma", label: "Discount Factor γ", kind: "linear", min: 0.8, max: 0.999, step: 0.001 },
+  { key: "tau", label: "Soft Update τ", kind: "log", min: -4, max: -1, sciNotation: true },
+  { key: "replayBufferSize", label: "Replay Buffer Size", kind: "linear", min: 10000, max: 2000000, step: 10000, int: true },
+  { key: "actorUpdateFreq", label: "Actor Update Frequency", kind: "linear", min: 1, max: 20, step: 1, int: true },
+  { key: "seed", label: "Seed", kind: "linear", min: 0, max: 999999, step: 1, int: true },
+];
+const MPC_PARAM_DEFS = [
+  { key: "predictionHorizon", label: "Prediction Horizon", kind: "linear", min: 2, max: 40, step: 1, int: true },
+  { key: "controlHorizon", label: "Control Horizon", kind: "linear", min: 1, max: 40, step: 1, int: true },
+  { key: "numSamples", label: "Number of Samples", kind: "linear", min: 16, max: 4096, step: 16, int: true },
+  { key: "optimIterations", label: "Optimization Iterations", kind: "linear", min: 1, max: 50, step: 1, int: true },
+  { key: "temperature", label: "Temperature / Exploration Noise", kind: "linear", min: 0, max: 2, step: 0.01 },
+  { key: "controlFrequency", label: "Control Frequency (Hz)", kind: "linear", min: 5, max: 500, step: 5, int: true },
+  { key: "costWeight_object", label: "Cost Weight · object", kind: "linear", min: 0, max: 5, step: 0.05 },
+  { key: "costWeight_grasp", label: "Cost Weight · grasp", kind: "linear", min: 0, max: 5, step: 0.05 },
+  { key: "costWeight_compression", label: "Cost Weight · compression", kind: "linear", min: 0, max: 5, step: 0.05 },
+  { key: "costWeight_velocity", label: "Cost Weight · velocity", kind: "linear", min: 0, max: 5, step: 0.05 },
+  { key: "costWeight_smoothness", label: "Cost Weight · smoothness", kind: "linear", min: 0, max: 5, step: 0.05 },
+];
+
+let paramsBuilt = false;
+const paramDebounce = {};
+
+function fmtSci(v) {
+  const s = Number(v).toExponential(1);
+  const [mantissa, exp] = s.split("e");
+  return `${mantissa}e${exp.replace("+", "")}`;
+}
+
+function buildParamRow(def, container) {
+  const row = document.createElement("div");
+  row.className = "param";
+  row.id = `param-${def.key}`;
+  const scopeTag = `<span class="scope-tag" id="scope-${def.key}">—</span>`;
+  if (def.kind === "log") {
+    row.innerHTML = `
+      <div class="name-row"><div class="name">${def.label}</div>${scopeTag}</div>
+      <div class="slider-row">
+        <button class="stepbtn" data-act="dec">−</button>
+        <input type="range" id="slider-${def.key}" min="${def.min}" max="${def.max}" step="0.01">
+        <button class="stepbtn" data-act="inc">+</button>
+        <div class="val" id="val-${def.key}">—</div>
+      </div>`;
+  } else {
+    row.innerHTML = `
+      <div class="name-row"><div class="name">${def.label}</div>${scopeTag}</div>
+      <div class="slider-row">
+        <button class="stepbtn" data-act="dec">−</button>
+        <input type="range" id="slider-${def.key}" min="${def.min}" max="${def.max}" step="${def.step}">
+        <button class="stepbtn" data-act="inc">+</button>
+        <input type="number" class="param-num" id="num-${def.key}" min="${def.min}" max="${def.max}" step="${def.step}">
+      </div>`;
+  }
+  container.appendChild(row);
+
+  const slider = row.querySelector(`#slider-${def.key}`);
+  const applyValue = raw => {
+    let v = def.kind === "log" ? Math.pow(10, Number(raw)) : Number(raw);
+    if (def.int) v = Math.round(v);
+    v = Math.min(def.kind === "log" ? Math.pow(10, def.max) : def.max,
+                 Math.max(def.kind === "log" ? Math.pow(10, def.min) : def.min, v));
+    clearTimeout(paramDebounce[def.key]);
+    paramDebounce[def.key] = setTimeout(() => postParams({ [def.key]: v }), 180);
+    updateParamDisplay(def, v);
+  };
+  slider.oninput = () => applyValue(def.kind === "log" ? slider.value : slider.value);
+  row.querySelectorAll(".stepbtn").forEach(b => {
+    b.onclick = () => {
+      const dir = b.dataset.act === "inc" ? 1 : -1;
+      if (def.kind === "log") {
+        slider.value = Number(slider.value) + dir * 0.15;
+        applyValue(slider.value);
+      } else {
+        const cur = Number(row.querySelector(`#num-${def.key}`).value) || def.min;
+        applyValue(cur + dir * def.step);
+      }
+    };
+  });
+  if (def.kind !== "log") {
+    const num = row.querySelector(`#num-${def.key}`);
+    num.onchange = () => applyValue(num.value);
+  }
+}
+
+function updateParamDisplay(def, value) {
+  if (def.kind === "log") {
+    $(`slider-${def.key}`).value = Math.log10(value);
+    $(`val-${def.key}`).textContent = fmtSci(value);
+  } else {
+    $(`slider-${def.key}`).value = value;
+    $(`num-${def.key}`).value = def.int ? Math.round(value) : Number(value.toFixed(4));
+  }
+}
+
+function buildParamPanels() {
+  const tContainer = $("training-params"), mContainer = $("mpc-params");
+  TRAINING_PARAM_DEFS.forEach(def => buildParamRow(def, tContainer));
+  MPC_PARAM_DEFS.forEach(def => buildParamRow(def, mContainer));
+  paramsBuilt = true;
+}
+
+function renderParams() {
+  if (!paramsBuilt) buildParamPanels();
+  const params = S?.parameters || {};
+  const st = S?.trainingState || "IDLE";
+  const evaluating = st === "EVALUATING";
+  [...TRAINING_PARAM_DEFS, ...MPC_PARAM_DEFS].forEach(def => {
+    const spec = params[def.key];
+    if (!spec) return;
+    const row = $(`param-${def.key}`);
+    const active = document.activeElement;
+    const isEditingThis = active && active.id && active.id.includes(def.key);
+    if (!isEditingThis) updateParamDisplay(def, spec.value);
+    const tag = $(`scope-${def.key}`);
+    tag.textContent = spec.scope === "immediate" ? "APPLIES IMMEDIATELY" : "NEXT RUN";
+    tag.className = "scope-tag " + spec.scope;
+    const locked = evaluating;
+    row.classList.toggle("locked", locked);
+    row.querySelectorAll("input, .stepbtn").forEach(el => (el.disabled = locked));
+  });
+}
+
+/* ───────────────────────── charts (canvas, no dependency) ───────────────────────── */
+function makeChart(canvas, opts) {
+  const state = { data: [], mode: "recent", hoverX: null };
+  const tooltip = $("tooltip");
+
+  function prep() {
+    const dpr = window.devicePixelRatio || 1;
+    const w = canvas.clientWidth, h = canvas.clientHeight;
+    if (canvas.width !== Math.round(w * dpr)) { canvas.width = w * dpr; canvas.height = h * dpr; }
+    const g = canvas.getContext("2d");
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    g.clearRect(0, 0, w, h);
+    return [g, w, h];
+  }
+
+  function visiblePoints() {
+    if (state.mode === "recent") return state.data.slice(-60);
+    return state.data;
+  }
+
+  function draw() {
+    const [g, w, h] = prep();
+    const pts = visiblePoints();
+    g.strokeStyle = INK; g.globalAlpha = 0.12; g.lineWidth = 1;
+    for (let i = 1; i < 4; i++) {
+      const y = (h / 4) * i;
+      g.beginPath(); g.moveTo(0, y); g.lineTo(w, y); g.stroke();
+    }
+    g.globalAlpha = 1;
+    if (!pts.length) {
+      g.fillStyle = INK; g.globalAlpha = 0.4; g.font = "700 10px 'Helvetica Neue', Arial, sans-serif";
+      g.fillText("NO DATA YET", 6, h / 2);
+      g.globalAlpha = 1;
+      return;
+    }
+    const series = opts.series(pts);
+    let lo = Infinity, hi = -Infinity;
+    series.forEach(s => s.values.forEach(v => { if (v != null) { lo = Math.min(lo, v); hi = Math.max(hi, v); } }));
+    if (!isFinite(lo)) { lo = 0; hi = 1; }
+    if (lo === hi) { lo -= 1; hi += 1; }
+    const pad = (hi - lo) * 0.12;
+    lo -= pad; hi += pad;
+    const n = pts.length;
+    const x = i => (n <= 1 ? w / 2 : (i / (n - 1)) * (w - 6) + 3);
+    const y = v => h - 6 - ((v - lo) / (hi - lo)) * (h - 14);
+
+    series.forEach(s => {
+      g.strokeStyle = s.color; g.lineWidth = s.width || 1.6; g.lineJoin = "round";
+      g.globalAlpha = s.opacity ?? 1;
+      if (s.dash) g.setLineDash([4, 3]); else g.setLineDash([]);
+      g.beginPath();
+      let started = false;
+      s.values.forEach((v, i) => {
+        if (v == null) { started = false; return; }
+        if (!started) { g.moveTo(x(i), y(v)); started = true; } else { g.lineTo(x(i), y(v)); }
+      });
+      g.stroke();
+      g.setLineDash([]); g.globalAlpha = 1;
+    });
+
+    if (state.hoverX != null) {
+      const i = Math.round(((state.hoverX - 3) / (w - 6)) * (n - 1));
+      if (i >= 0 && i < n) {
+        g.strokeStyle = INK; g.globalAlpha = 0.3; g.lineWidth = 1;
+        g.beginPath(); g.moveTo(x(i), 0); g.lineTo(x(i), h); g.stroke(); g.globalAlpha = 1;
+        const p = pts[i];
+        const lines = [`ep ${p.episode ?? "—"}  step ${p.step ?? "—"}`]
+          .concat(series.map(s => `${s.name}: ${s.values[i] != null ? Number(s.values[i]).toFixed(4) : "—"}`));
+        tooltip.innerHTML = lines.join("<br>");
+        tooltip.style.display = "block";
+      }
+    }
+    if (opts.onValue) opts.onValue(series);
+  }
+
+  canvas.addEventListener("mousemove", e => {
+    const r = canvas.getBoundingClientRect();
+    state.hoverX = e.clientX - r.left;
+    tooltip.style.left = e.clientX + 14 + "px";
+    tooltip.style.top = e.clientY + 14 + "px";
+    draw();
+  });
+  canvas.addEventListener("mouseleave", () => { state.hoverX = null; tooltip.style.display = "none"; draw(); });
+  window.addEventListener("resize", draw);
+
+  return {
+    setData(points) { state.data = points || []; draw(); },
+    setMode(mode) { state.mode = mode; draw(); },
+    getMode: () => state.mode,
+  };
+}
+
+function buildChartCard(id, title, legendHtml) {
+  const box = document.createElement("div");
+  box.className = "chart-box";
+  box.innerHTML = `
+    <div class="chart-head">
+      <div class="chart-title">${title}</div>
+      <div class="chart-legend">${legendHtml}</div>
+      <div class="rangebtns" data-for="${id}">
+        <button data-mode="recent" class="on">RECENT</button><button data-mode="all">ALL</button>
+      </div>
+    </div>
+    <canvas id="${id}"></canvas>`;
+  return box;
+}
+
+const CHARTS = {};
+function mountCoreCharts() {
+  const grid = $("metrics-grid");
+  const specs = [
+    ["chart-reward", "Episode Reward", `<span><i style="background:${BLUE}"></i>reward</span>`],
+    ["chart-success", "Success Rate", `<span><i style="background:${BLUE}"></i>rate</span>`],
+    ["chart-loss", "Actor / Critic Loss", `<span><i style="background:${BLUE}"></i>actor</span><span><i style="background:${INK}"></i>critic</span>`],
+    ["chart-lr", "Learning Rate", `<span><i style="background:${BLUE}"></i>lr</span>`],
+  ];
+  specs.forEach(([id, title, legend]) => {
+    grid.appendChild(buildChartCard(id, title, legend));
+    const series = seriesFor(id);
+    if (series) CHARTS[id] = makeChart($(id), { series }); // chart-loss: built by fixLossChart() below (dual series)
+  });
+
+  const extraDefs = [
+    ["mpcCost", "MPC Cost"], ["episodeLength", "Episode Length"], ["entropy", "Entropy"],
+    ["qValue", "Q-Value"], ["actionMagnitude", "Action Magnitude"],
+  ];
+  const pills = $("extra-pills");
+  let activeExtra = "mpcCost";
+  extraDefs.forEach(([key, label]) => {
+    const p = document.createElement("button");
+    p.className = "extra-pill" + (key === activeExtra ? " on" : "");
+    p.textContent = label.toUpperCase();
+    p.onclick = () => {
+      activeExtra = key;
+      pills.querySelectorAll(".extra-pill").forEach(x => x.classList.remove("on"));
+      p.classList.add("on");
+      renderExtraChart(activeExtra, label);
+    };
+    pills.appendChild(p);
+  });
+  const eg = $("extra-grid");
+  eg.appendChild(buildChartCard("chart-extra", "MPC Cost", `<span><i style="background:${BLUE}"></i>value</span>`));
+  // series reads `activeExtra` from this closure, so switching the pill
+  // above changes what the next draw() shows without rebuilding the chart.
+  CHARTS["chart-extra"] = makeChart($("chart-extra"), { series: pts => [{ name: activeExtra, color: BLUE, values: pts.map(p => p.value) }] });
+
+  document.querySelectorAll(".rangebtns button").forEach(b => {
+    b.onclick = () => {
+      const wrap = b.closest(".rangebtns");
+      wrap.querySelectorAll("button").forEach(x => x.classList.remove("on"));
+      b.classList.add("on");
+      const id = wrap.dataset.for;
+      CHARTS[id]?.setMode(b.dataset.mode);
+    };
+  });
+
+  function renderExtraChart(key, label) {
+    $("chart-extra").closest(".chart-box").querySelector(".chart-title").textContent = label;
+    CHARTS["chart-extra"].setData(T ? T[key] || [] : []);
+  }
+  mountCoreCharts._renderExtra = () => renderExtraChart(activeExtra, extraDefs.find(d => d[0] === activeExtra)[1]);
+}
+function seriesFor(id) {
+  if (id === "chart-reward") return pts => [{ name: "reward", color: BLUE, values: pts.map(p => p.value) }];
+  if (id === "chart-success") return pts => [{ name: "rate", color: BLUE, values: pts.map(p => p.value) }];
+  if (id === "chart-lr") return pts => [{ name: "lr", color: BLUE, values: pts.map(p => p.value) }];
+  if (id === "chart-loss") return null; // set per-render (needs two series merged)
+  return () => [];
+}
+
+function renderCharts() {
+  if (!T) return;
+  CHARTS["chart-reward"]?.setData(T.reward);
+  CHARTS["chart-success"]?.setData(T.successRate);
+  CHARTS["chart-lr"]?.setData(T.learningRate);
+  if (CHARTS["chart-loss"]) {
+    CHARTS["chart-loss"].setData(mergeByEpisode(T.actorLoss, T.criticLoss));
+  }
+  mountCoreCharts._renderExtra && mountCoreCharts._renderExtra();
+}
+function mergeByEpisode(a, b) {
+  a = a || []; b = b || [];
+  const n = Math.max(a.length, b.length);
+  const out = [];
+  for (let i = 0; i < n; i++) {
+    out.push({ episode: a[i]?.episode ?? b[i]?.episode, step: a[i]?.step ?? b[i]?.step, actor: a[i]?.value, critic: b[i]?.value });
+  }
+  return out;
+}
+
+/* chart-loss needs a dual-series accessor; wire it once CHARTS exists */
+function fixLossChart() {
+  CHARTS["chart-loss"] = makeChart($("chart-loss"), {
+    series: pts => [
+      { name: "actor", color: BLUE, values: pts.map(p => p.actor) },
+      { name: "critic", color: INK, values: pts.map(p => p.critic), dash: true },
+    ],
+  });
+}
+
+/* ───────────────────────── MPC monitor chart ───────────────────────── */
+let mpcChart = null;
+function mountMpcChart() {
+  const grid = $("mpc-grid");
+  grid.appendChild(buildChartCard(
+    "chart-mpc", "State Trajectory",
+    `<span><i class="dash"></i>reference</span><span><i style="background:${BLUE}"></i>actual</span><span><i style="background:${BLUE};opacity:.35"></i>predicted</span>`
+  ));
+  $("chart-mpc").closest(".chart-box").querySelector(".rangebtns").style.display = "none";
+  $("chart-mpc").style.height = "180px";
+  mpcChart = makeChart($("chart-mpc"), {
+    series: pts => [
+      { name: "reference", color: INK, dash: true, values: pts.map(p => p.reference) },
+      { name: "actual", color: BLUE, values: pts.map(p => p.actual) },
+      { name: "predicted", color: BLUE, opacity: 0.35, values: pts.map(p => p.predicted) },
+    ],
+  });
+}
+function renderMpcMonitor() {
+  const m = T?.mpcMonitor;
+  if (!m || !m.t) {
+    $("mpc-error").textContent = "—"; $("mpc-cost-readout").textContent = "—";
+    return;
+  }
+  const pts = m.t.map((t, i) => ({
+    episode: S?.episode, step: S?.globalStep,
+    reference: m.reference[i],
+    actual: m.actual[i],
+    predicted: i >= m.predictedFrom ? m.predicted[i - m.predictedFrom] : null,
+  }));
+  mpcChart?.setData(pts);
+  $("mpc-error").textContent = m.controlError != null ? m.controlError.toFixed(4) : "—";
+  $("mpc-cost-readout").textContent = m.mpcCost != null ? m.mpcCost.toFixed(3) : "—";
+}
+
+/* ───────────────────────── header / phases / KPIs / checkpoint ───────────────────────── */
+function phaseForState(st) {
+  if (["IDLE"].includes(st)) return "CONFIG";
+  if (["INITIALIZING", "RUNNING", "PAUSED", "STOPPING"].includes(st)) return "TRAIN";
+  if (st === "EVALUATING") return "MPC_EVAL";
+  if (["SAVING", "COMPLETED"].includes(st)) return "CHECKPOINT";
+  if (st === "ERROR") return "TRAIN";
+  return "CONFIG";
+}
+function renderPhases() {
+  const order = ["CONFIG", "TRAIN", "MPC_EVAL", "CHECKPOINT"];
+  const current = phaseForState(S?.trainingState || "IDLE");
+  const curIdx = order.indexOf(current);
+  document.querySelectorAll(".phase").forEach(el => {
+    const idx = order.indexOf(el.dataset.p);
+    el.classList.toggle("active", idx === curIdx);
+    el.classList.toggle("done", idx < curIdx || (S?.trainingState === "COMPLETED" && idx <= curIdx));
+    el.classList.toggle("pending", idx > curIdx);
+  });
+  document.querySelectorAll(".flow").forEach(el => {
+    const idx = order.indexOf(el.dataset.b);
+    el.classList.toggle("live", idx < curIdx);
+  });
+}
+
+function renderHeaderConn() {
+  $("conn-backend").classList.toggle("up", !!S?.backendConnected);
+  $("conn-wandb").classList.toggle("up", !!S?.wandbConnected);
+  const link = $("wandb-link");
+  if (S?.wandbRunUrl) { link.style.display = ""; link.href = S.wandbRunUrl; } else { link.style.display = "none"; }
+}
+
+function fmtNum(v, digits) {
+  if (v == null || Number.isNaN(v)) return "—";
+  return Number(v).toFixed(digits ?? 2);
+}
+function fmtInt(v) { return v == null ? "—" : Number(v).toLocaleString(); }
+
+function renderKpis() {
+  $("v-success").textContent = S?.successRate != null ? (S.successRate * 100).toFixed(1) + "%" : "—";
+  $("v-reward").textContent = fmtNum(S?.currentReward, 2);
+  $("v-best").textContent = S?.bestReward != null && isFinite(S.bestReward) ? fmtNum(S.bestReward, 2) : "—";
+  $("v-episode").textContent = fmtInt(S?.episode);
+  $("v-step").textContent = fmtInt(S?.globalStep);
+  $("v-mpccost").textContent = fmtNum(S?.mpcCost, 3);
+  const box = $("kpi-success");
+  box.className = "kpi hero status-" + (S?.successRateStatus || "below_target").toLowerCase();
+  $("st-success").textContent = S?.successRateStatus || "";
+}
+
+function renderCheckpoint() {
+  const c = S?.checkpoint || {};
+  $("ck-time").textContent = c.lastSaved ? new Date(c.lastSaved).toLocaleString() : "—";
+  $("ck-name").textContent = c.filename || "—";
+  $("ck-path").textContent = c.path || "—";
+  $("ck-epstep").textContent = (c.episode != null) ? `${c.episode} / ${c.globalStep}` : "—";
+  $("ck-best").textContent = c.isBest ? "YES — BEST" : "no";
+  const badge = $("ck-badge");
+  badge.innerHTML = c.lastResult
+    ? `<span class="ck-badge ${c.lastResult === "SUCCESS" ? "success" : "failed"}">${c.lastResult}</span>` : "";
+  const sw = $("ck-autosave");
+  sw.classList.toggle("on", !!c.autoSaveEnabled);
+  sw.setAttribute("aria-checked", String(!!c.autoSaveEnabled));
+}
+$("ck-autosave").addEventListener("click", () => {
+  const enabled = !$("ck-autosave").classList.contains("on");
+  callAction("set_autosave", { enabled }, null);
+});
+$("ck-autosave").addEventListener("keydown", e => { if (e.key === " " || e.key === "Enter") { e.preventDefault(); $("ck-autosave").click(); } });
+
+async function renderCheckpointList() {
+  try {
+    const r = await fetch("/checkpoints");
+    const list = await r.json();
+    S = S || {}; S.checkpointList = list;
+    const el = $("ck-list");
+    el.innerHTML = list.slice(0, 12).map(c => `
+      <div class="item">
+        <span>ep ${c.episode} · step ${c.globalStep}${c.isBest ? " · BEST" : ""}</span>
+        <button data-name="${c.filename}">LOAD</button>
+      </div>`).join("") || `<div class="item"><span style="opacity:.5">no checkpoints yet</span></div>`;
+    el.querySelectorAll("button[data-name]").forEach(b => {
+      b.onclick = () => {
+        if (!confirm(`Load "${b.dataset.name}"? 현재 episode/step 표시가 대체됩니다.`)) return;
+        callAction("load_checkpoint", { filename: b.dataset.name }, b);
+      };
+    });
+  } catch (e) { /* polled again shortly */ }
+}
+setInterval(renderCheckpointList, 4000);
+
+async function renderWandbMedia() {
+  try {
+    const r = await fetch("/wandb/media");
+    const media = await r.json();
+    const el = $("wandb-media");
+    el.innerHTML = media.length
+      ? media.map(m => `<img src="${m.url}" alt="${m.name}" title="${m.name}">`).join("")
+      : `<div class="media-empty">NO IMAGES LOGGED YET</div>`;
+  } catch (e) { /* keep previous */ }
+}
+setInterval(renderWandbMedia, 8000);
+
+/* ───────────────────────── main render ───────────────────────── */
+function render() {
+  if (!S) return;
+  renderHeaderConn();
+  renderPhases();
+  renderActions();
+  renderParams();
+  renderKpis();
+  renderCheckpoint();
+  renderCharts();
+  renderMpcMonitor();
+}
+
+mountCoreCharts();
+fixLossChart();
+mountMpcChart();
+renderCheckpointList();
+renderWandbMedia();
+startTransport();
+</script>
+</body>
+</html>

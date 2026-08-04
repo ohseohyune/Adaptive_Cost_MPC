@@ -90,6 +90,11 @@ class CurriculumBoxCatchConfig:
     # "batch size" arm of the rollout_size/diversity diagnostic (see
     # accumulate_rollout_across_episodes for the "diversity" arm).
     rollout_size: int = 16
+    # Exploration knobs, forwarded to every episode's AcmpcBoxCatchConfig.
+    # Defaults mirror AcmpcBoxCatchConfig's own, so omitting them is a no-op.
+    entropy_coef: float = 1e-3
+    log_std_min: float = -5.0
+    log_std_max: float = -1.8
     # False (default): each episode's rollout buffer is created and flushed
     # within that one run_box_catch call, as before -- every PPO update sees
     # transitions from a single domain sample (one box mass/size/speed).
@@ -380,6 +385,9 @@ def run_curriculum_box_catch(
                 checkpoint_path=checkpoint_path,
                 weight_delta_fraction=config.weight_delta_fraction,
                 rollout_size=config.rollout_size,
+                entropy_coef=config.entropy_coef,
+                log_std_min=config.log_std_min,
+                log_std_max=config.log_std_max,
                 wandb_log_interval=config.wandb_log_interval,
                 live_state_path=config.live_state_path,
                 **({"phase_priors": config.phase_priors} if config.phase_priors else {}),
@@ -696,6 +704,9 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--live-state-path", default=None)
     parser.add_argument("--weight-delta-fraction", type=float, default=0.65)
     parser.add_argument("--rollout-size", type=int, default=16)
+    parser.add_argument("--entropy-coef", type=float, default=1e-3)
+    parser.add_argument("--log-std-min", type=float, default=-5.0)
+    parser.add_argument("--log-std-max", type=float, default=-1.8)
     parser.add_argument("--accumulate-rollout-across-episodes", action="store_true")
     return parser.parse_args()
 
@@ -717,6 +728,9 @@ def main() -> None:
             live_state_path=args.live_state_path,
             weight_delta_fraction=args.weight_delta_fraction,
             rollout_size=args.rollout_size,
+            entropy_coef=args.entropy_coef,
+            log_std_min=args.log_std_min,
+            log_std_max=args.log_std_max,
             accumulate_rollout_across_episodes=args.accumulate_rollout_across_episodes,
             progressive_decision_window=args.progressive_decision_window,
             progressive_minimum_anchor_episodes=args.progressive_minimum_anchor_episodes,

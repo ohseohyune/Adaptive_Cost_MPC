@@ -1,0 +1,17 @@
+mass=0.20 plain    success_rate=0.00
+mass=0.20 learned  success_rate=0.90
+mass=0.30 plain    success_rate=0.00
+mass=0.30 learned  success_rate=0.85
+mass=0.40 plain    success_rate=0.00
+mass=0.40 learned  success_rate=0.85
+mass=0.50 plain    success_rate=0.00
+mass=0.50 learned  success_rate=0.85
+mass=0.60 plain    success_rate=0.00
+mass=0.60 learned  success_rate=1.00
+mass=0.70 plain    success_rate=0.00
+mass=0.70 learned  success_rate=0.50
+mass=0.85 plain    success_rate=0.00
+mass=0.85 learned  success_rate=0.05
+mass=1.00 plain    success_rate=0.00
+mass=1.00 learned  success_rate=0.00
+wrote /home/seohy/colcon_ws/src/Adaptive_Cost_MPC/sweep_results/box_catch_mass_sweep.json

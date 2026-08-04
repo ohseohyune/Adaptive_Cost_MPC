@@ -1,0 +1,21 @@
+Sun Aug  2 11:13:08 2026
+ERROR: could not create window
+
+Sun Aug  2 11:19:22 2026
+ERROR: could not create window
+
+Sun Aug  2 11:35:28 2026
+ERROR: could not create window
+
+Sun Aug  2 11:35:45 2026
+ERROR: could not create window
+
+Sun Aug  2 11:35:54 2026
+ERROR: could not create window
+
+Sun Aug  2 11:36:39 2026
+ERROR: could not create window
+
+Sun Aug  2 11:40:35 2026
+ERROR: could not create window
+

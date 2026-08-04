@@ -73,7 +73,15 @@ from control.mpc.online_actor_critic import (
     OnlineActorCriticConfig,
 )
 from control.squeeze import DynamicSideSqueezeConfig, default_curriculum
-from acmpc.main_acmpc_box_catch import AcmpcBoxCatchConfig, run_box_catch
+from acmpc.main_acmpc_box_catch import (
+    AcmpcBoxCatchConfig,
+    _capture_speed_limit,
+    _missing_normal_force_wrench,
+    _normal_force_feedback_gain,
+    _relative_pad_closing_speed,
+    run_box_catch,
+)
+from acmpc.fixed_baseline_frozen import FROZEN_PHASE_PRIORS
 
 
 def _solve(gravity: tuple[float, float, float]) -> np.ndarray:
@@ -117,6 +125,54 @@ def sc2_gravity_default_is_noop() -> tuple[bool, str]:
     return ok, f"gravity_buffer={mpc.gravity.tolist()}"
 
 
+def sc2b_force_feedback_only_supplies_missing_grip() -> tuple[bool, str]:
+    inward = np.array([0.0, -1.0, 0.0])
+    deficit = _missing_normal_force_wrench(10.0, 4.0, inward)
+    excess = _missing_normal_force_wrench(10.0, 12.0, inward)
+    ok = np.allclose(deficit, [0.0, 0.0, 0.0, 0.0, -6.0, 0.0]) and np.allclose(
+        excess, 0.0
+    )
+    return ok, f"deficit_wrench={deficit.tolist()}, excess_wrench={excess.tolist()}"
+
+
+def sc2c_impact_speed_uses_pad_normal_closing_motion() -> tuple[bool, str]:
+    y_axis = np.array([0.0, 1.0, 0.0])
+    tangent_only = _relative_pad_closing_speed(
+        np.array([-1.0, 0.0, -4.0]),
+        np.array([-1.0, 0.0, -4.0]),
+        np.array([-1.0, 0.0, -4.0]),
+        y_axis,
+    )
+    inward = _relative_pad_closing_speed(
+        np.array([-1.0, -0.3, -4.0]),
+        np.array([-1.0, 0.2, -4.0]),
+        np.array([-1.0, 0.0, -4.0]),
+        y_axis,
+    )
+    ok = np.isclose(tangent_only, 0.0) and np.isclose(inward, 0.3)
+    return ok, f"tangent_only={tangent_only:.3f}, inward={inward:.3f} m/s"
+
+
+def sc2d_wide_boxes_get_bounded_force_feedback_boost() -> tuple[bool, str]:
+    nominal = _normal_force_feedback_gain(0.150)
+    wide = _normal_force_feedback_gain(0.165)
+    nominal_speed = _capture_speed_limit(0.150, 0.18)
+    wide_speed = _capture_speed_limit(0.165, 0.18)
+    configured_wide_speed = _capture_speed_limit(0.165, 0.40)
+    ok = (
+        np.isclose(nominal, 1.0)
+        and np.isclose(wide, 1.5)
+        and np.isclose(nominal_speed, 0.18)
+        and np.isclose(wide_speed, 0.30)
+        and np.isclose(configured_wide_speed, 0.40)
+    )
+    return ok, (
+        f"gain nominal/wide={nominal:.1f}/{wide:.1f}, "
+        f"capture_speed nominal/wide/configured="
+        f"{nominal_speed:.2f}/{wide_speed:.2f}/{configured_wide_speed:.2f} m/s"
+    )
+
+
 def sc3_box_catch_succeeds_with_engineered_priors() -> tuple[bool, str]:
     summary = run_box_catch(AcmpcBoxCatchConfig(seed=7, device="cpu", online_learning=False))
     ok = (
@@ -149,6 +205,37 @@ def sc4_online_learning_succeeds_and_still_learns() -> tuple[bool, str]:
     return ok, detail
 
 
+def sc7_shared_rollout_buffer_carries_over_episode_boundary() -> tuple[bool, str]:
+    # rollout_size bigger than one episode's ~656 transitions but smaller
+    # than two -- episode 1 must leave its buffer un-flushed (no update),
+    # episode 2 must see the carried-over transitions and cross the
+    # threshold. Verifies the accumulate_rollout_across_episodes code path
+    # (owns_rollout_buffer=False) added for the batch-diversity experiment.
+    shared_buffer = ACMPCRolloutBuffer()
+    checkpoint = Path("/tmp/sc7_shared_rollout_checkpoint.pt")
+    checkpoint.unlink(missing_ok=True)
+    config = AcmpcBoxCatchConfig(
+        seed=7, device="cpu", online_learning=True, rollout_size=1000,
+        checkpoint_path=str(checkpoint),
+    )
+    summary1 = run_box_catch(config, rollout_buffer=shared_buffer)
+    carried_over = len(shared_buffer) > 0
+    summary2 = run_box_catch(
+        AcmpcBoxCatchConfig(
+            seed=8, device="cpu", online_learning=True, rollout_size=1000,
+            checkpoint_path=str(checkpoint),
+        ),
+        rollout_buffer=shared_buffer,
+    )
+    checkpoint.unlink(missing_ok=True)
+    ok = summary1.online_updates == 0 and carried_over and summary2.online_updates >= 1
+    detail = (
+        f"episode1 updates={summary1.online_updates} carried_over={carried_over}, "
+        f"episode2 updates={summary2.online_updates}"
+    )
+    return ok, detail
+
+
 def sc5_domain_randomization_warmup_stage_succeeds() -> tuple[bool, str]:
     seed = 3
     stage = default_curriculum()[0]  # warmup
@@ -169,6 +256,70 @@ def sc5_domain_randomization_warmup_stage_succeeds() -> tuple[bool, str]:
         f"success={summary.success}, hold={summary.hold_time_s:.3f}s"
     )
     return ok, detail
+
+
+def sc5b_heavy_full_stage_impact_is_safe() -> tuple[bool, str]:
+    # This seed produced 18.50 N when mass-scaled geom_solref was installed
+    # one physics step too late (after first contact had already peaked).
+    seed = 1008
+    domain = default_curriculum()[2].sample(np.random.default_rng(seed), 2)
+    squeeze = DynamicSideSqueezeConfig(
+        random_seed=seed,
+        box_half_y=domain.half_size[1],
+        launch_velocity_low=domain.launch_velocity,
+        launch_velocity_high=domain.launch_velocity,
+    )
+    summary = run_box_catch(
+        AcmpcBoxCatchConfig(
+            seed=seed,
+            device="cpu",
+            online_learning=False,
+            weight_delta_fraction=0.0,
+            squeeze=squeeze,
+            domain_parameters=domain,
+        )
+    )
+    limit = squeeze.first_contact_force_limit
+    ok = summary.first_contact_peak_force_n <= limit
+    return ok, (
+        f"mass={domain.mass:.3f}, face_half_size="
+        f"({domain.half_size[0]:.4f}, {domain.half_size[2]:.4f}), "
+        f"peak={summary.first_contact_peak_force_n:.2f}N <= {limit:.2f}N"
+    )
+
+
+def sc5c_wide_full_stage_box_captures_safely() -> tuple[bool, str]:
+    # This unseen seed failed after 3.70 s of strict HOLD with the nominal
+    # feedback gain, then completed 5 s with the bounded wide-box boost.
+    seed = 12023
+    domain = default_curriculum()[2].sample(np.random.default_rng(seed), 2)
+    squeeze = DynamicSideSqueezeConfig(
+        random_seed=seed,
+        box_half_y=domain.half_size[1],
+        launch_velocity_low=domain.launch_velocity,
+        launch_velocity_high=domain.launch_velocity,
+    )
+    summary = run_box_catch(
+        AcmpcBoxCatchConfig(
+            seed=seed,
+            device="cpu",
+            online_learning=False,
+            weight_delta_fraction=0.0,
+            phase_priors=FROZEN_PHASE_PRIORS,
+            squeeze=squeeze,
+            domain_parameters=domain,
+        )
+    )
+    limit = squeeze.first_contact_force_limit
+    ok = (
+        domain.half_size[1] >= 0.165
+        and summary.success
+        and summary.first_contact_peak_force_n <= limit
+    )
+    return ok, (
+        f"half_y={domain.half_size[1]:.4f}m, success={summary.success}, "
+        f"peak={summary.first_contact_peak_force_n:.2f}N <= {limit:.2f}N"
+    )
 
 
 def _synthetic_transition(rng: np.random.Generator, phase: BimanualPhase) -> dict:
@@ -253,10 +404,16 @@ def main() -> None:
     scenarios = [
         ("SC1 gravity changes the solved reference direction", sc1_gravity_changes_the_solved_reference),
         ("SC2 gravity=(0,0,0) default is a no-op", sc2_gravity_default_is_noop),
+        ("SC2b force feedback only supplies missing grip", sc2b_force_feedback_only_supplies_missing_grip),
+        ("SC2c impact speed uses pad-normal closing motion", sc2c_impact_speed_uses_pad_normal_closing_motion),
+        ("SC2d wide boxes get bounded capture support", sc2d_wide_boxes_get_bounded_force_feedback_boost),
         ("SC3 box-catch succeeds with engineered priors (online_learning=False)", sc3_box_catch_succeeds_with_engineered_priors),
         ("SC4 box-catch succeeds with online_learning=True and still learns", sc4_online_learning_succeeds_and_still_learns),
         ("SC5 domain randomization (warmup stage) succeeds", sc5_domain_randomization_warmup_stage_succeeds),
+        ("SC5b heavy full-stage first impact is safe", sc5b_heavy_full_stage_impact_is_safe),
+        ("SC5c wide full-stage box captures safely", sc5c_wide_full_stage_box_captures_safely),
         ("SC6 cumulative actor-delta cap holds and round-trips", sc6_cumulative_actor_delta_cap_holds_and_round_trips),
+        ("SC7 shared rollout buffer carries over episode boundary", sc7_shared_rollout_buffer_carries_over_episode_boundary),
     ]
     passed = 0
     print("\n=== Phase 12: AC-MPC ballistic box catch (partial) ===\n")

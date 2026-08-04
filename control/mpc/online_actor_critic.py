@@ -47,7 +47,7 @@ class BimanualPhase(IntEnum):
     MANIPULATION = 4
 
 
-COST_NAMES = ("object", "grasp", "force", "velocity", "smoothness")
+COST_NAMES = ("object", "grasp", "compression", "velocity", "smoothness")
 N_COSTS = len(COST_NAMES)
 N_PHASES = len(BimanualPhase)
 
@@ -202,6 +202,16 @@ class OnlineActorCriticConfig:
     # slow drift away from a validated engineered prior.
     maximum_cumulative_actor_delta: Optional[float] = None
     initial_log_std: float = -3.2
+    # Hard clamp bounds applied to log_std after every actor update (see
+    # OnlineActorCriticACMPC._LOG_STD_MIN/_MAX, now sourced from here).
+    # Defaults match this scenario's long-validated condition-2 behavior --
+    # an exact no-op for every existing caller. A run whose exploration
+    # collapses to log_std_min early (see acmpc_3way_ablation_condition3's
+    # prior-free actor getting stuck near-identical to its cold-start init
+    # across every phase) can raise log_std_min to keep more exploration
+    # noise alive for longer, at the cost of noisier actions throughout.
+    log_std_min: float = -5.0
+    log_std_max: float = -1.8
     # Overrides AdaptiveCostActor._PHASE_PRIORS when set. Leave None for the
     # default handle-grasp priors; scenarios with different geometry/timing
     # (e.g. a fast ballistic catch needing much stronger grasp-separation
@@ -484,11 +494,11 @@ class DifferentiableBimanualMPC(nn.Module):
         )
         center_ref = center_ref.reshape(batch, 3 * n)
         relative_ref = relative_reference[:, None, :].expand(-1, n, -1).reshape(batch, 3 * n)
-        # COST_NAMES[2] ("force") is historically named after grip force but
-        # does not track any measured or predicted contact force -- it pulls
-        # the relative left/right separation toward a *compressed* position
-        # reference (relative_reference shrunk by a fixed grasp_compression
-        # distance), i.e. it is a compression-distance proxy for grip, not a
+        # COST_NAMES[2] ("compression") does not track any measured or
+        # predicted contact force -- it pulls the relative left/right
+        # separation toward a *compressed* position reference
+        # (relative_reference shrunk by a fixed grasp_compression distance),
+        # i.e. it is a compression-distance proxy for grip, not a
         # force-tracking term. Measured contact force (from the physics
         # engine) is only ever used by callers for their own observation/
         # success/safety logic, never fed back into this QP as a target.
@@ -650,9 +660,6 @@ class _MPCBatch:
 class OnlineActorCriticACMPC:
     """Own the neural cost actor, critic, differentiable MPC, and PPO updates."""
 
-    _LOG_STD_MIN = -5.0
-    _LOG_STD_MAX = -1.8
-
     def __init__(
         self,
         mpc_config: Optional[DifferentiableMPCConfig] = None,
@@ -766,7 +773,7 @@ class OnlineActorCriticACMPC:
             )
             value = self.critic(obs)
             normalized_mean = mean_velocity / self.mpc_config.velocity_limit
-            log_std = torch.clamp(self.actor.log_std, self._LOG_STD_MIN, self._LOG_STD_MAX)
+            log_std = torch.clamp(self.actor.log_std, self.config.log_std_min, self.config.log_std_max)
             std = log_std.exp().expand_as(normalized_mean)
             distribution = torch.distributions.Normal(normalized_mean, std)
             normalized_action = distribution.sample() if training else normalized_mean
@@ -818,6 +825,7 @@ class OnlineActorCriticACMPC:
         # Old (pre-update) critic predictions vs. GAE returns -- the
         # standard PPO diagnostic; no extra critic forward pass.
         update_explained_variance = explained_variance(returns, np.asarray(rollout.values))
+        advantage_std = float(advantages.std()) if transitions > 1 else 0.0
         if transitions > 1:
             advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
 
@@ -842,6 +850,7 @@ class OnlineActorCriticACMPC:
         actor_losses: list[float] = []
         critic_losses: list[float] = []
         entropies: list[float] = []
+        actor_grad_norms: list[float] = []
         stop_for_kl = False
 
         for _ in range(epochs):
@@ -870,12 +879,13 @@ class OnlineActorCriticACMPC:
 
                 self.actor_optimizer.zero_grad(set_to_none=True)
                 actor_loss.backward()
-                torch.nn.utils.clip_grad_norm_(
+                grad_norm = torch.nn.utils.clip_grad_norm_(
                     self.actor.parameters(), self.config.max_grad_norm
                 )
+                actor_grad_norms.append(float(grad_norm))
                 self.actor_optimizer.step()
                 with torch.no_grad():
-                    self.actor.log_std.clamp_(self._LOG_STD_MIN, self._LOG_STD_MAX)
+                    self.actor.log_std.clamp_(self.config.log_std_min, self.config.log_std_max)
 
                 predicted_value = self.critic(mini.observations)
                 critic_loss = self.config.value_loss_coefficient * torch.mean(
@@ -948,6 +958,8 @@ class OnlineActorCriticACMPC:
             approximate_kl=final_kl,
             actor_parameter_delta=actor_delta,
             explained_variance=update_explained_variance,
+            advantage_std=advantage_std,
+            actor_grad_norm=float(np.mean(actor_grad_norms)) if actor_grad_norms else 0.0,
         )
 
     def _distribution(
@@ -966,7 +978,7 @@ class OnlineActorCriticACMPC:
             previous_velocity=mini.previous_velocities,
         )
         normalized_mean = mean_velocity / self.mpc_config.velocity_limit
-        log_std = torch.clamp(self.actor.log_std, self._LOG_STD_MIN, self._LOG_STD_MAX)
+        log_std = torch.clamp(self.actor.log_std, self.config.log_std_min, self.config.log_std_max)
         std = log_std.exp().expand_as(normalized_mean)
         distribution = torch.distributions.Normal(normalized_mean, std)
         new_log_probability = distribution.log_prob(mini.actions).sum(dim=-1)

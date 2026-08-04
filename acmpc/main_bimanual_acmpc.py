@@ -470,8 +470,8 @@ def run_demo(config: Optional[DemoConfig] = None) -> DemoSummary:
                         + config.command_lookahead_s
                         * command_velocity[3 * index : 3 * (index + 1)]
                     )
-                    mean_force_weight = float(np.mean(action.weights["force"]))
-                    stiffness = float(np.clip(430.0 - 17.0 * mean_force_weight, 150.0, 430.0))
+                    mean_compression_weight = float(np.mean(action.weights["compression"]))
+                    stiffness = float(np.clip(430.0 - 17.0 * mean_compression_weight, 150.0, 430.0))
                     controller = runtime["impedance"][name]
                     controller.K[3:, 3:] = stiffness * np.eye(3)
                     controller.config.K_pos = stiffness

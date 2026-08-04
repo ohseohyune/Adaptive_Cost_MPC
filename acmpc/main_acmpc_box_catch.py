@@ -30,13 +30,14 @@ import json
 import os
 import sys
 import time
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace as _dc_replace
 from enum import Enum, IntEnum
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
 
 import mujoco
 import numpy as np
+import torch
 
 ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
@@ -199,15 +200,12 @@ _DIAGNOSTIC_MODE_PHASE = {
 
 # object, grasp geometry, compression proxy, velocity feed-forward, command
 # smoothness -- indexed by CatchControlPhase. COST_NAMES[2] (in
-# control/mpc/online_actor_critic.py) is still literally called "force" for
-# backward compatibility with the unrelated handle-grasp demo's checkpoints/
-# code (see that module's comments), but it does not track measured or
-# predicted contact force -- it pulls the relative left/right separation
-# toward a *compressed position* reference, so it is labeled "compression"
-# here and in this file's logging (see _log_cost_contributions below).
-# Measured contact force (contact.left/right.normal_force) is only used
-# below for the actor's observation and for phase-transition/success/safety
-# judgment, never as an MPC tracking target.
+# control/mpc/online_actor_critic.py) is "compression" -- it does not track
+# measured or predicted contact force, it pulls the relative left/right
+# separation toward a *compressed position* reference. Measured contact
+# force (contact.left/right.normal_force) is only used below for the
+# actor's observation and for phase-transition/success/safety judgment,
+# never as an MPC tracking target.
 #
 # Row values carried over unchanged from the original 5-row table (dropping
 # the MANIPULATION row, which this scenario never used -- box-catch has no
@@ -390,6 +388,67 @@ class AcmpcBoxCatchConfig:
     # definition (some, not yet stable, contact) rather than requiring an
     # already-substantial force.
     contact_detect_force_n: float = 0.05
+    # Compression ceiling the MPC's "compression" cost pulls the hand
+    # separation toward (see the mpc_config site). 0.030 is the current
+    # hardcoded value -- exposing it, not changing it. The HOLD phase prior
+    # (grasp 20 / compression 65) realises ~76% of it, ~23 mm.
+    grasp_compression: float = 0.030
+    # Post-contact grasp-center realignment (default off = exact no-op).
+    #
+    # First contact is geometrically forced onto the box's leading corner:
+    # the box flies laterally into the pads, so at first touch
+    #   box_COM_x - pad_center_x = box_half_x + pad_half_x ~= 10 cm,
+    # an identity with no pad-position term in it. Aim-plane, launch-geometry,
+    # precontact_gap and closure-timing variants were all measured and all
+    # failed (the pads can only close ~1.6 cm during the 64 ms the box spends
+    # inside them, and precontact_gap is already 1.0 cm -- i.e. the design is
+    # at its actuation-bandwidth limit). So the offset cannot be prevented
+    # before contact; correct it after.
+    #
+    # Once HOLD is entered, slide the commanded grasp center along x toward
+    # the measured box COM over hold_grasp_com_align_ramp_s, capped at
+    # hold_grasp_com_align_max_shift_m. x only: y is the squeeze axis and z
+    # carries the gravity load, and neither is where the offset lives.
+    # acmpc/diagnose_hold_rotation.py was written against exactly these three
+    # field names before the feature existed.
+    # MEASURED USELESS (2026-08-03, 30 seeds): success 0.800 -> 0.800 and
+    # angular violation 0.0227 -> 0.0225 for every ramp/shift combination,
+    # identical to 2 decimals. The reason is physical, not a tuning miss:
+    # target_center shifts BOTH pad targets equally, and the box is held by
+    # nothing but those two pads, so the whole grasped assembly translates
+    # and the pad-to-box alignment never changes. Re-centering a grasped
+    # object by moving its grippers is impossible without a second reaction
+    # surface. Kept only so acmpc/diagnose_hold_rotation.py -- which was
+    # written against these field names -- runs at all.
+    # Ramp the precontact gap off the box's predicted arrival at the pads'
+    # own x plane instead of off PRE_IMPACT entry. 0.0 = existing behavior.
+    gap_close_lead_s: float = 0.0
+    hold_grasp_com_align: bool = False
+    hold_grasp_com_align_ramp_s: float = 1.0
+    hold_grasp_com_align_max_shift_m: float = 0.03
+    # Measurement flag (default False = exact no-op): bypass
+    # BallisticBoxPredictor's finite-difference/EMA velocity estimate and
+    # hand the predictor's consumers MuJoCo's true box velocity instead.
+    # The predictor is already seeded with the true launch velocity at
+    # reset (see predictor.reset in run_box_catch), so this only removes
+    # the EMA smoothing on top -- the question it answers is whether that
+    # smoothing measurably affects policy behavior at all.
+    #
+    # Measured (postfix_v4 checkpoint frozen, full_wide_speed domain, seeds
+    # 1000-1059, paired): EMA 0.717 vs ground truth 0.683 success, 14 of 60
+    # seeds flipping (8 EMA-only, 6 truth-only). McNemar exact p=0.79 --
+    # no measurable aggregate difference in either direction. Conclusion:
+    # leave this False. There is nothing to gain, and switching would shift
+    # the observation distribution every existing sweep result was produced
+    # under. The predictor stays as-is and the object state is documented as
+    # an observability assumption (it is already seeded with the true launch
+    # velocity at reset, so that assumption is truthful).
+    #
+    # Incidental but important: the same run showed all 120 episodes reaching
+    # bilateral contact -- every failure was a lost/incomplete 5 s hold, never
+    # a missed catch. The 23% per-seed flip rate is that hold's sensitivity,
+    # not a velocity-source effect.
+    ground_truth_object_velocity: bool = False
     # hold_entry_dwell: how long CAPTURE -> HOLD's "both pads >=
     # required_grip_force" condition (see run_box_catch's required_grip_force
     # = strict_grip_force_margin*mg/(2*mu)) must hold continuously before
@@ -627,6 +686,15 @@ class BoxCatchSummary:
     # to move further than delta_fraction/the clamp allowed.
     weight_lower_bound_hit_fraction: float
     weight_upper_bound_hit_fraction: float
+    # Learning diagnostics (see the exploration-collapse investigation):
+    # how far the actor's learned residual actually moves the cost weights
+    # off their phase prior, and what exploration noise is really in use.
+    # Recovered exactly from weights/phase_prior rather than a second
+    # forward pass: weights = base * (1 + delta_fraction * tanh(net(obs))).
+    mean_abs_actor_residual: float
+    mean_abs_actor_residual_per_cost: tuple[float, ...]
+    effective_action_std: float
+    raw_log_std_mean: float
     # Mean/std of each cost dimension's raw (unweighted) first-horizon-step
     # residual across the episode -- see _log_cost_contributions.
     mean_residual_object: float
@@ -889,6 +957,22 @@ def _ttc_from_velocity(
     return ttc_raw, valid
 
 
+def _pad_box_facing_surface_x(model, data, geom_id: int, box_x: float) -> float:
+    """World-x coordinate of whichever face of a (possibly tilted) pad
+    collision geom is nearer the box -- not the geom's site/center x, and
+    not a hardcoded left/right sign. See _pad_plane_x's comment (diagnostic-
+    path-only, position_remaining_ttc computation)."""
+
+    center = data.geom_xpos[geom_id]
+    rot = data.geom_xmat[geom_id].reshape(3, 3)
+    half = model.geom_size[geom_id]
+    signs = np.array([[sx, sy, sz] for sx in (-1, 1) for sy in (-1, 1) for sz in (-1, 1)])
+    world_corners = center + (signs * half) @ rot.T
+    xs = world_corners[:, 0]
+    xmin, xmax = float(xs.min()), float(xs.max())
+    return xmax if abs(xmax - box_x) < abs(xmin - box_x) else xmin
+
+
 def _enter_preimpact(
     *,
     prediction_confident: bool,
@@ -1018,20 +1102,6 @@ def _smoothstep(value: float) -> float:
 _WEIGHT_CLAMP_MIN = 1e-3
 _WEIGHT_CLAMP_MAX = 500.0
 
-# Logging-only relabel of COST_NAMES[2] ("force") to "compression" (item 7 --
-# see the comment above _BOX_CATCH_PHASE_PRIORS for why the underlying dict
-# key stays "force"). Used for weight/cost_raw/cost_weighted CSV column
-# names (item 9) so logged output is not mislabeled even though the shared
-# module's dict key is unchanged for backward compatibility.
-_LOG_COST_LABELS = {
-    "object": "object",
-    "grasp": "grasp",
-    "force": "compression",
-    "velocity": "velocity",
-    "smoothness": "smoothness",
-}
-
-
 def _cost_contributions(
     *,
     weights: dict[str, np.ndarray],
@@ -1057,10 +1127,8 @@ def _cost_contributions(
     first-order approximation of "how far is each term from satisfied right
     now", not a re-derivation of the QP's exact objective value.
 
-    COST_NAMES[2] is still literally "force" (see the comment above
-    _BOX_CATCH_PHASE_PRIORS) but is reported under both its raw dict key and
-    -- by the caller, in the CSV/summary -- the "compression" label, since it
-    tracks a compressed position reference, not force.
+    COST_NAMES[2] is "compression" -- it tracks a compressed position
+    reference, not measured or predicted contact force.
     """
 
     object_delta = target_center - ee_midpoint
@@ -1079,7 +1147,7 @@ def _cost_contributions(
     raw = {
         "object": float(np.dot(object_delta, object_delta)),
         "grasp": float(np.dot(grasp_delta, grasp_delta)),
-        "force": float(np.dot(compression_delta, compression_delta)),
+        "compression": float(np.dot(compression_delta, compression_delta)),
         "velocity": float(np.dot(velocity_delta, velocity_delta)) / 2.0,
         "smoothness": float(np.dot(smoothness_delta, smoothness_delta)),
     }
@@ -1239,6 +1307,23 @@ def run_box_catch(
     wandb_logger: Optional[WandbLogger] = None,
     global_step_start: int = 0,
     rollout_buffer: Optional[ACMPCRolloutBuffer] = None,
+    # Read-only diagnostic hook, called once per physics substep right after
+    # mj_step with a dict of already-computed locals (model/data/phase/
+    # contact/desired_pad_rotations/latest_impedance/...) -- None (default)
+    # is a zero-overhead no-op for every existing caller. Does not affect
+    # control, gains, or success/thresholds; purely observational.
+    step_callback: Optional[Callable[[dict], None]] = None,
+    # Experimental pre-contact target override, for shadow-rollout
+    # reachability experiments only (see
+    # acmpc/diagnose_shadow_precontact_target.py) -- called once per control
+    # step, before capture_center exists (i.e. only INTERCEPT/PRE_IMPACT),
+    # with a dict of {time_s, phase, prediction, position_remaining_ttc,
+    # position_remaining_ttc_valid, y_axis}. Returning a 3-vector replaces
+    # target_center for that step; returning None leaves target_center
+    # exactly as production computes it. None (default) is a zero-overhead
+    # no-op for every existing caller -- does not affect HOLD, gains,
+    # friction, or success conditions.
+    target_override_fn: Optional[Callable[[dict], Optional[np.ndarray]]] = None,
 ) -> BoxCatchSummary:
     config = config or AcmpcBoxCatchConfig()
     # A caller that tracks W&B across many episodes (e.g. the curriculum
@@ -1403,10 +1488,7 @@ def run_box_catch(
         dt=control_dt,
         velocity_limit=config.mpc_velocity_limit,
         gravity=tuple(float(value) for value in gravity),
-        # The MPC's "compression" cost (COST_NAMES[2], still literally named
-        # "force" in control/mpc/online_actor_critic.py for backward
-        # compatibility -- see this file's comment above _BOX_CATCH_PHASE_
-        # PRIORS) pulls the relative separation toward
+        # The MPC's "compression" cost (COST_NAMES[2]) pulls the relative separation toward
         # relative_reference*(1 - grasp_compression/|relative_reference|) --
         # a fixed compression *ceiling* no combination of weights can exceed
         # (raising w_compression can only interpolate the solve's effective
@@ -1416,7 +1498,7 @@ def run_box_catch(
         # 0.5 kg box's own weight needs from friction alone (~10 N/pad, see
         # minimum_symmetric_squeeze_force in control/squeeze/friction.py) to
         # avoid slipping through the pads under gravity during the hold.
-        grasp_compression=0.030,
+        grasp_compression=config.grasp_compression,
     )
     learner = OnlineActorCriticACMPC(
         mpc_config,
@@ -1710,6 +1792,8 @@ def run_box_catch(
     phase_dwell_s = {CatchPhase.INTERCEPT: 0.0, CatchPhase.PRE_IMPACT: 0.0,
                       CatchPhase.CAPTURE: 0.0, CatchPhase.HOLD: 0.0}
     blend_active_steps = 0
+    com_align_start_s: Optional[float] = None
+    com_align_shift_x = 0.0
     control_step_count = 0
     velocity_saturation_samples = 0
     velocity_total_samples = 0
@@ -1718,6 +1802,7 @@ def run_box_catch(
     weight_upper_hit_samples = 0
     weight_total_samples = 0
     residual_samples: dict[str, list[float]] = {name: [] for name in COST_NAMES}
+    actor_residual_samples: list[np.ndarray] = []
     actor_output_variation_sum = 0.0
     actor_output_variation_count = 0
     previous_mean_weights: Optional[np.ndarray] = None
@@ -1840,6 +1925,11 @@ def run_box_catch(
                         contact.right.normal_force,
                     )
                 prediction = predictor.update(time_s, box_position)
+                if config.ground_truth_object_velocity:
+                    prediction = _dc_replace(
+                        prediction,
+                        velocity=data.qvel[box_dof_address : box_dof_address + 3].copy(),
+                    )
                 # The MPC's own horizon lookahead is only
                 # horizon*dt (~tens of ms) -- far shorter than the ~0.5 s
                 # flight time -- so handing it the box's *current* position
@@ -1890,6 +1980,55 @@ def run_box_catch(
                 # just the phase gate). With no trustworthy velocity, track
                 # where the box actually is right now instead of projecting
                 # a fall that isn't happening.
+                # remaining_ttc (solved against cfg.catch_plane_x=0.30) is
+                # ~0.08-0.15m short of where pad-box contact actually
+                # happens, and since position_after(remaining_ttc)'s x
+                # trivially equals catch_plane_x by construction,
+                # intercept_center.x stays pinned at 0.30 for the whole
+                # INTERCEPT/PRE_IMPACT phase instead of tracking the true
+                # contact point (see
+                # acmpc/diagnose_precontact_grasp_offset.py). Solving TTC
+                # against the pads' own current x plus box half-width
+                # (position_remaining_ttc below) measurably shrinks that
+                # position/timing error, but wiring it into intercept_center
+                # was tried and made the *actual* simulated contact point
+                # worse, not better (EDGE/CORNER classification regressed,
+                # pad-tracking error grew 3-5x, one seed's cumulative
+                # rotation roughly doubled) -- the real bottleneck is the
+                # hands not having enough lead time to reach a target that
+                # only becomes accurate close to contact, not the
+                # prediction accuracy itself. Left as a diagnostic-only
+                # computation (not used for intercept_center) until that
+                # reachability/lead-time issue has its own fix; do not wire
+                # this into intercept_center without addressing that.
+                #
+                # _pad_plane_x used the pad *site* x (== the pad collision
+                # geom's declared center) as a stand-in for where the pad's
+                # box-facing collision surface actually sits. Measured
+                # directly from MuJoCo's own geometry
+                # (acmpc/diagnose_x_bias_geometry.py): the catch pad geom is
+                # tilted (ffw_sg2.xml's left/right_catch_pad quat), so its
+                # true world-x half-extent is ~0.043m, not its declared
+                # 0.006m thickness -- the site sits ~0.037m short of the
+                # real surface, identically in all 4 tested seeds (a fixed
+                # robot-geometry artifact, not box-random). Read the pad
+                # geom's actual world x-extent and pick whichever face is
+                # nearer the box's current x as the box-facing surface,
+                # instead of assuming a fixed left/right sign.
+                _pad_plane_x = 0.5 * (
+                    _pad_box_facing_surface_x(model, data, catch_pad_gids[0], float(box_position[0]))
+                    + _pad_box_facing_surface_x(model, data, catch_pad_gids[1], float(box_position[0]))
+                )
+                _position_ttc_raw, _position_ttc_valid = _ttc_from_velocity(
+                    float(prediction.velocity[0]),
+                    _pad_plane_x + half_x,
+                    float(prediction.position[0]),
+                )
+                position_remaining_ttc = float(
+                    np.clip(_position_ttc_raw, cfg.minimum_intercept_ttc, cfg.maximum_intercept_ttc)
+                    if _position_ttc_valid
+                    else remaining_ttc
+                )
                 intercept_center = (
                     prediction.position_after(remaining_ttc)
                     if remaining_ttc_valid
@@ -1961,7 +2100,27 @@ def run_box_catch(
                     capture_rotation if capture_rotation is not None else box_rotation
                 )
                 y_axis = effective_rotation[:, 1]
-                if phase is CatchPhase.INTERCEPT:
+                # TTC to the pads' own collision-geom center x: the instant
+                # the box COM is centered on the pad face.
+                _pad_center_x = 0.5 * (
+                    float(data.geom_xpos[catch_pad_gids[0]][0])
+                    + float(data.geom_xpos[catch_pad_gids[1]][0])
+                )
+                _center_ttc_raw, _center_ttc_valid = _ttc_from_velocity(
+                    float(prediction.velocity[0]),
+                    _pad_center_x,
+                    float(prediction.position[0]),
+                )
+                if (
+                    config.gap_close_lead_s > 0.0
+                    and _center_ttc_valid
+                    and phase in (CatchPhase.INTERCEPT, CatchPhase.PRE_IMPACT)
+                ):
+                    gap_blend = _smoothstep(
+                        1.0 - _center_ttc_raw / max(config.gap_close_lead_s, 1e-9)
+                    )
+                    phase_precontact_gap = (1.0 - gap_blend) * cfg.precontact_gap
+                elif phase is CatchPhase.INTERCEPT:
                     phase_precontact_gap = cfg.precontact_gap
                 elif phase is CatchPhase.PRE_IMPACT:
                     gap_blend = _smoothstep(
@@ -1970,6 +2129,24 @@ def run_box_catch(
                     phase_precontact_gap = (1.0 - gap_blend) * cfg.precontact_gap
                 else:
                     phase_precontact_gap = 0.0
+                if os.environ.get("GAPDBG"):
+                    _lpad = data.site_xpos[catch_pad_site_ids["left"]]
+                    _rpad = data.site_xpos[catch_pad_site_ids["right"]]
+                    _clear = 0.5 * (
+                        abs(float(_lpad[1]) - float(box_position[1]))
+                        + abs(float(_rpad[1]) - float(box_position[1]))
+                    ) - cfg.box_half_y - cfg.pad_half_thickness
+                    print(
+                        f"GAPDBG t={time_s:.4f} phase={phase.value} "
+                        f"center_ttc={_center_ttc_raw:.4f} valid={_center_ttc_valid} "
+                        f"cmd_gap={phase_precontact_gap:.5f} actual_clear={_clear:.5f} "
+                        f"box_x={float(box_position[0]):.4f} pad_center_x={_pad_center_x:.4f} "
+                        f"dx={float(box_position[0]) - _pad_center_x:+.4f} "
+                        f"lpad_y={float(_lpad[1]):.5f} rpad_y={float(_rpad[1]):.5f} "
+                        f"box_y={float(box_position[1]):.5f} "
+                        f"fl={contact.left.normal_force:.2f} fr={contact.right.normal_force:.2f}",
+                        flush=True,
+                    )
                 pad_offset_scalar = (
                     cfg.box_half_y + cfg.pad_half_thickness + phase_precontact_gap
                 )
@@ -1996,6 +2173,30 @@ def run_box_catch(
                     capture_center = capture_center + capture_reference_velocity * control_dt
                     target_center = capture_center
                     target_velocity = capture_reference_velocity
+                    # Slide the grasp center onto the box COM in x once the
+                    # grip is stable enough to be in HOLD. The x error is
+                    # latched at HOLD entry (chasing a live COM would fight
+                    # the very rotation this is correcting).
+                    if config.hold_grasp_com_align and phase is CatchPhase.HOLD:
+                        if com_align_start_s is None:
+                            com_align_start_s = time_s
+                            com_align_shift_x = float(
+                                np.clip(
+                                    box_position[0] - capture_center[0],
+                                    -config.hold_grasp_com_align_max_shift_m,
+                                    config.hold_grasp_com_align_max_shift_m,
+                                )
+                            )
+                        ramp = _smoothstep(
+                            (time_s - com_align_start_s)
+                            / max(config.hold_grasp_com_align_ramp_s, 1e-9)
+                        )
+                        target_center = target_center + np.array(
+                            [com_align_shift_x * ramp, 0.0, 0.0]
+                        )
+                    elif phase is not CatchPhase.HOLD:
+                        com_align_start_s = None
+                        com_align_shift_x = 0.0
                 else:
                     # PRE_IMPACT intentionally keeps the same predicted
                     # intercept target as INTERCEPT. Switching to the live
@@ -2007,6 +2208,21 @@ def run_box_catch(
                     target_velocity = None
                     tracking_time_constant = remaining_ttc
                     velocity_feedforward_base = np.zeros(3)
+
+                if target_override_fn is not None and capture_center is None:
+                    _override = target_override_fn(
+                        {
+                            "time_s": time_s,
+                            "phase": phase,
+                            "prediction": prediction,
+                            "position_remaining_ttc": position_remaining_ttc,
+                            "position_remaining_ttc_valid": _position_ttc_valid,
+                            "y_axis": y_axis,
+                            "predictor_samples": int(predictor._samples),
+                        }
+                    )
+                    if _override is not None:
+                        target_center = np.asarray(_override, dtype=float).reshape(3)
 
                 left_pad_target = target_center + pad_vector
                 right_pad_target = target_center - pad_vector
@@ -2608,6 +2824,17 @@ def run_box_catch(
                     weight_total_samples += _weight_array.size
                     weight_lower_hit_samples += int(np.sum(_weight_array <= _WEIGHT_CLAMP_MIN * 1.001))
                     weight_upper_hit_samples += int(np.sum(_weight_array >= _WEIGHT_CLAMP_MAX * 0.999))
+                _prior_row = np.maximum(np.asarray(action.phase_prior, dtype=float), 1e-9)
+                _weight_rows = np.stack(
+                    [np.asarray(action.weights[_name], dtype=float) for _name in COST_NAMES],
+                    axis=1,
+                )
+                actor_residual_samples.append(
+                    np.abs(
+                        (_weight_rows / _prior_row - 1.0)
+                        / max(config.weight_delta_fraction, 1e-9)
+                    ).mean(axis=0)
+                )
                 _current_mean_weights = np.array(
                     [float(np.mean(action.weights[_name])) for _name in COST_NAMES]
                 )
@@ -2652,7 +2879,7 @@ def run_box_catch(
                         f"required_grip_force_n={required_grip_force:.2f} "
                         f"hold_timer={hold_timer:.3f} "
                         f"grasp_w={float(np.mean(action.weights['grasp'])):.2f} "
-                        f"force_w={float(np.mean(action.weights['force'])):.2f} "
+                        f"compression_w={float(np.mean(action.weights['compression'])):.2f} "
                         f"hand_object_distance={hand_object_distance:.4f}",
                         flush=True,
                     )
@@ -2699,7 +2926,7 @@ def run_box_catch(
                         f"right_pad_box_relative_velocity={np.array2string(_right_pad_velocity - box_velocity, precision=3)} "
                         f"object_w={float(np.mean(action.weights['object'])):.2f} "
                         f"grasp_w={float(np.mean(action.weights['grasp'])):.2f} "
-                        f"force_w={float(np.mean(action.weights['force'])):.2f} "
+                        f"compression_w={float(np.mean(action.weights['compression'])):.2f} "
                         f"velocity_w={float(np.mean(action.weights['velocity'])):.2f} "
                         f"smoothness_w={float(np.mean(action.weights['smoothness'])):.2f} "
                         f"left_impedance_target={np.array2string(desired_transforms['left'][:3, 3], precision=3)} "
@@ -3062,15 +3289,15 @@ def run_box_catch(
                             for _side in ("left", "right")
                         },
                         **{
-                            f"weight/{_LOG_COST_LABELS[_name]}": _contributions[_name]["weight"]
+                            f"weight/{_name}": _contributions[_name]["weight"]
                             for _name in COST_NAMES
                         },
                         **{
-                            f"cost_raw/{_LOG_COST_LABELS[_name]}": _contributions[_name]["raw"]
+                            f"cost_raw/{_name}": _contributions[_name]["raw"]
                             for _name in COST_NAMES
                         },
                         **{
-                            f"cost_weighted/{_LOG_COST_LABELS[_name]}": _contributions[_name]["weighted"]
+                            f"cost_weighted/{_name}": _contributions[_name]["weighted"]
                             for _name in COST_NAMES
                         },
                     }
@@ -3114,6 +3341,49 @@ def run_box_catch(
                 data.ctrl[gripper_ids[name]] = FFW_GRIPPERS[name].open_ctrl
 
             mujoco.mj_step(model, data)
+            if step_callback is not None:
+                step_callback(
+                    {
+                        "step": step,
+                        "time_s": time_s,
+                        "phase": phase,
+                        "model": model,
+                        "data": data,
+                        "box_body_id": box_body_id,
+                        "box_dof_address": box_dof_address,
+                        "catch_pad_site_ids": catch_pad_site_ids,
+                        "contact": contact,
+                        "desired_pad_rotations": desired_pad_rotations,
+                        "latest_impedance": dict(latest_impedance),
+                        "target_center": target_center.copy(),
+                        "impact_emergency": bool(impact.emergency),
+                        "impact_in_first_contact_window": bool(impact.in_first_contact_window),
+                        "first_contact_peak_force_n": float(impact.peak_first_contact_force),
+                        # Pre-contact grasp-geometry diagnostics (read-only,
+                        # additive -- these are the same local values already
+                        # driving control this step, just also handed to
+                        # step_callback so a diagnostic script doesn't need
+                        # its own parallel recomputation of pad targets/EE
+                        # poses to compare desired vs. actual contact
+                        # geometry).
+                        "left_pad_target": left_pad_target.copy(),
+                        "right_pad_target": right_pad_target.copy(),
+                        "left_ee": left_ee.copy(),
+                        "right_ee": right_ee.copy(),
+                        "box_position": box_position.copy(),
+                        "box_rotation": box_rotation.copy(),
+                        "y_axis": y_axis.copy(),
+                        "prediction_position": prediction.position.copy(),
+                        "prediction_velocity": prediction.velocity.copy(),
+                        "prediction_confidence": float(prediction.confidence),
+                        "remaining_ttc": float(remaining_ttc),
+                        "remaining_ttc_valid": bool(remaining_ttc_valid),
+                        "position_remaining_ttc": float(position_remaining_ttc),
+                        "position_remaining_ttc_valid": bool(_position_ttc_valid),
+                        "pad_plane_x": float(_pad_plane_x),
+                        "predictor_samples": int(predictor._samples),
+                    }
+                )
             if viewer is not None:
                 viewer.sync()
             if _gif_renderer is not None and step % config.record_gif_every == 0:
@@ -3251,12 +3521,30 @@ def run_box_catch(
         weight_upper_bound_hit_fraction=(
             float(weight_upper_hit_samples / weight_total_samples) if weight_total_samples else 0.0
         ),
+        mean_abs_actor_residual=(
+            float(np.mean(actor_residual_samples)) if actor_residual_samples else 0.0
+        ),
+        mean_abs_actor_residual_per_cost=(
+            tuple(float(v) for v in np.mean(actor_residual_samples, axis=0))
+            if actor_residual_samples
+            else tuple(0.0 for _ in COST_NAMES)
+        ),
+        effective_action_std=float(
+            torch.exp(
+                torch.clamp(
+                    learner.actor.log_std.detach(),
+                    config.log_std_min,
+                    config.log_std_max,
+                )
+            ).mean()
+        ),
+        raw_log_std_mean=float(learner.actor.log_std.detach().mean()),
         mean_residual_object=float(np.mean(residual_samples["object"])) if residual_samples["object"] else 0.0,
         std_residual_object=float(np.std(residual_samples["object"])) if residual_samples["object"] else 0.0,
         mean_residual_grasp=float(np.mean(residual_samples["grasp"])) if residual_samples["grasp"] else 0.0,
         std_residual_grasp=float(np.std(residual_samples["grasp"])) if residual_samples["grasp"] else 0.0,
-        mean_residual_compression=float(np.mean(residual_samples["force"])) if residual_samples["force"] else 0.0,
-        std_residual_compression=float(np.std(residual_samples["force"])) if residual_samples["force"] else 0.0,
+        mean_residual_compression=float(np.mean(residual_samples["compression"])) if residual_samples["compression"] else 0.0,
+        std_residual_compression=float(np.std(residual_samples["compression"])) if residual_samples["compression"] else 0.0,
         mean_residual_velocity=float(np.mean(residual_samples["velocity"])) if residual_samples["velocity"] else 0.0,
         std_residual_velocity=float(np.std(residual_samples["velocity"])) if residual_samples["velocity"] else 0.0,
         mean_residual_smoothness=float(np.mean(residual_samples["smoothness"])) if residual_samples["smoothness"] else 0.0,

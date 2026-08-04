@@ -1,0 +1,104 @@
+wandb: [wandb.login()] Loaded credentials for https://api.wandb.ai from /home/seohy/.netrc.
+wandb: Currently logged in as: ohseohyun0531 (ohseohyun0531-kwangwoon-university) to https://api.wandb.ai. Use `wandb login --relogin` to force relogin
+wandb: setting up run cltmw806
+wandb: Tracking run with wandb version 0.28.1
+wandb: Run data is saved locally in /home/seohy/colcon_ws/src/Adaptive_Cost_MPC/wandb/run-20260726_224701-cltmw806
+wandb: Run `wandb offline` to turn off syncing.
+wandb: Syncing run postfix-v2-wdf1.0-resume
+wandb: ⭐️ View project at https://wandb.ai/ohseohyun0531-kwangwoon-university/adaptive-cost-mpc-box-catch
+wandb: 🚀 View run at https://wandb.ai/ohseohyun0531-kwangwoon-university/adaptive-cost-mpc-box-catch/runs/cltmw806
+episodes 0-19: success_rate=0.950 mean_reward=772.18 mean_actor_loss=0.0124 mean_kl=0.0001 stage=full scheduler_success_rate=1.000
+episodes 20-39: success_rate=0.900 mean_reward=760.48 mean_actor_loss=0.0124 mean_kl=0.0000 stage=full scheduler_success_rate=0.833
+episodes 40-59: success_rate=0.900 mean_reward=782.28 mean_actor_loss=0.0124 mean_kl=0.0000 stage=full scheduler_success_rate=0.667
+episodes 60-79: success_rate=0.800 mean_reward=710.07 mean_actor_loss=0.0124 mean_kl=0.0001 stage=full scheduler_success_rate=0.667
+episodes 80-99: success_rate=0.900 mean_reward=759.39 mean_actor_loss=0.0124 mean_kl=0.0000 stage=full scheduler_success_rate=0.833
+episodes 100-119: success_rate=0.850 mean_reward=757.09 mean_actor_loss=0.0124 mean_kl=0.0000 stage=full scheduler_success_rate=0.667
+episodes 120-139: success_rate=0.950 mean_reward=764.85 mean_actor_loss=0.0124 mean_kl=0.0000 stage=full scheduler_success_rate=0.833
+episodes 140-159: success_rate=0.950 mean_reward=804.11 mean_actor_loss=0.0124 mean_kl=0.0000 stage=full scheduler_success_rate=1.000
+episodes 160-179: success_rate=0.800 mean_reward=753.47 mean_actor_loss=0.0124 mean_kl=0.0001 stage=full scheduler_success_rate=1.000
+episodes 180-199: success_rate=0.900 mean_reward=787.23 mean_actor_loss=0.0124 mean_kl=0.0000 stage=full scheduler_success_rate=0.667
+episodes 200-219: success_rate=0.950 mean_reward=685.18 mean_actor_loss=0.0124 mean_kl=0.0000 stage=full scheduler_success_rate=1.000
+episodes 220-239: success_rate=0.800 mean_reward=787.81 mean_actor_loss=0.0124 mean_kl=0.0000 stage=full scheduler_success_rate=1.000
+episodes 240-259: success_rate=0.900 mean_reward=786.85 mean_actor_loss=0.0124 mean_kl=0.0000 stage=full scheduler_success_rate=0.833
+episodes 260-279: success_rate=0.900 mean_reward=750.36 mean_actor_loss=0.0124 mean_kl=0.0000 stage=full scheduler_success_rate=1.000
+episodes 280-299: success_rate=0.900 mean_reward=803.40 mean_actor_loss=0.0124 mean_kl=0.0000 stage=full scheduler_success_rate=1.000
+episodes 300-319: success_rate=0.900 mean_reward=791.56 mean_actor_loss=0.0124 mean_kl=0.0000 stage=full scheduler_success_rate=1.000
+episodes 320-339: success_rate=0.850 mean_reward=728.61 mean_actor_loss=0.0124 mean_kl=0.0000 stage=full scheduler_success_rate=0.667
+episodes 340-359: success_rate=0.900 mean_reward=743.75 mean_actor_loss=0.0123 mean_kl=0.0000 stage=full scheduler_success_rate=0.833
+episodes 360-379: success_rate=0.850 mean_reward=748.04 mean_actor_loss=0.0124 mean_kl=0.0000 stage=full scheduler_success_rate=0.833
+episodes 380-399: success_rate=1.000 mean_reward=824.06 mean_actor_loss=0.0124 mean_kl=0.0000 stage=full scheduler_success_rate=1.000
+wandb: updating run metadata
+wandb: uploading output.log; uploading wandb-summary.json; uploading config.yaml
+wandb: uploading history steps 42401-42578, summary
+wandb: 
+wandb: Run history:
+wandb:       actor/mean_abs_residual_relative ▂▂▃▁▂▅▄▅▄▇▃▄▃▂▁▄▃█▂▂▃▃▂▄▃▃▁▁▂▃▂▃▁▂▂▂▂▁▁▃
+wandb:                catch/bilateral_contact ████████▁█████▁██████████▁█▁████▁██▁█▁█▁
+wandb:                     catch/box_velocity ▁▁▁▁▁▅▁▁▅▁▁▁▁▁▁▁▁▁▁▁▁▁▁▄█▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
+wandb:                catch/left_normal_force ▅▇▁▆▆▆▆▆▆▆█▅▆▆▁▆▅█▅▆▅▅▅▅▅▇▁▆▇▅▆▇█▇▄▆▆▆▇▅
+wandb:               catch/right_normal_force ▄▄▄▆▅▆▃▄▅█▅▂▁▄▄▄▆▄▅▃▅▄▄▄▄▄▁▁▄▄▄▄▆▅▁▄▄▅▆▅
+wandb:                  eval/impact_safe_rate ██████████▁█████████
+wandb:                    eval/mean_hold_time ▆▄▄▁▄▃▆▆▁▆▆▁▄▄▄▄▄▄▃█
+wandb:                  eval/stable_hold_rate ▆▄▄▁▄▃▆▆▁▄▆▁▄▄▄▄▃▄▃█
+wandb:                      eval/success_rate ▆▄▄▁▄▃▆▆▁▄▆▁▄▄▄▄▃▄▃█
+wandb: failure/excessive_first_contact_impact ▁
+wandb:                                    +41 ...
+wandb: 
+wandb: Run summary:
+wandb: actor/mean_abs_residual_relative 0.04677
+wandb:          catch/bilateral_contact 1
+wandb:               catch/box_velocity 0.01872
+wandb:          catch/left_normal_force 11.69055
+wandb:         catch/right_normal_force 11.69056
+wandb:              catch/slip_velocity nan
+wandb:            eval/impact_safe_rate 1
+wandb:              eval/mean_hold_time 5.01
+wandb:            eval/stable_hold_rate 1
+wandb:                eval/success_rate 1
+wandb:                              +41 ...
+wandb: 
+wandb: 🚀 View run postfix-v2-wdf1.0-resume at: https://wandb.ai/ohseohyun0531-kwangwoon-university/adaptive-cost-mpc-box-catch/runs/cltmw806
+wandb: ⭐️ View project at: https://wandb.ai/ohseohyun0531-kwangwoon-university/adaptive-cost-mpc-box-catch
+wandb: Synced 5 W&B file(s), 0 media file(s), 0 artifact file(s) and 0 other file(s)
+wandb: Find logs at: ./wandb/run-20260726_224701-cltmw806/logs
+Traceback (most recent call last):
+  File "/home/seohy/colcon_ws/src/Adaptive_Cost_MPC/acmpc/main_acmpc_box_catch_curriculum.py", line 520, in <module>
+    main()
+    ~~~~^^
+  File "/home/seohy/colcon_ws/src/Adaptive_Cost_MPC/acmpc/main_acmpc_box_catch_curriculum.py", line 490, in main
+    summary = run_curriculum_box_catch(
+        CurriculumBoxCatchConfig(
+    ...<12 lines>...
+        )
+    )
+  File "/home/seohy/colcon_ws/src/Adaptive_Cost_MPC/acmpc/main_acmpc_box_catch_curriculum.py", line 259, in run_curriculum_box_catch
+    summary = run_box_catch(
+        episode_config,
+        wandb_logger=wandb_logger,
+        global_step_start=global_step,
+    )
+  File "/home/seohy/colcon_ws/src/Adaptive_Cost_MPC/acmpc/main_acmpc_box_catch.py", line 2348, in run_box_catch
+    latest_impedance[name] = impedance[name].apply(
+                             ~~~~~~~~~~~~~~~~~~~~~^
+        model,
+        ^^^^^^
+    ...<3 lines>...
+        wrench_feedforward=force_wrench,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/home/seohy/colcon_ws/src/Adaptive_Cost_MPC/control/clik/impedance.py", line 196, in apply
+    result = self.compute(
+        model,
+    ...<3 lines>...
+        wrench_feedforward=wrench_feedforward,
+    )
+  File "/home/seohy/colcon_ws/src/Adaptive_Cost_MPC/control/clik/impedance.py", line 161, in compute
+    J_pinv = np.linalg.pinv(J)                          # dof x 6
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/numpy/linalg/linalg.py", line 2022, in pinv
+    u, s, vt = svd(a, full_matrices=False, hermitian=hermitian)
+               ~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/seohy/miniconda3/lib/python3.13/site-packages/numpy/linalg/linalg.py", line 1681, in svd
+    u, s, vh = gufunc(a, signature=signature, extobj=extobj)
+               ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+KeyboardInterrupt

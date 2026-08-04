@@ -20,6 +20,7 @@ Usage:
     python3 acmpc/stage1_evaluation.py --checkpoint 20
     python3 acmpc/stage1_evaluation.py --checkpoint 50
     python3 acmpc/stage1_evaluation.py --checkpoint 100
+    python3 acmpc/stage1_evaluation.py --viewer-seed 1001
 """
 
 from __future__ import annotations
@@ -112,7 +113,7 @@ class SeedResult:
     secondary_failure_categories: tuple = field(default_factory=tuple)
 
 
-def _run_one(seed: int):
+def _run_one(seed: int, *, viewer: bool = False):
     os.environ["STAGE0_DEBUG_TRACE"] = "1"
     rng = np.random.default_rng(seed)
     stage = progressive_catch_curriculum()[STAGE_INDEX]
@@ -122,6 +123,7 @@ def _run_one(seed: int):
     cfg = AcmpcBoxCatchConfig(
         seed=seed,
         device="cpu",
+        viewer=viewer,
         online_learning=False,
         use_launch_fixture=False,
         domain_parameters=resolved.domain,
@@ -389,11 +391,20 @@ def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--checkpoint", type=int, default=20, choices=(20, 50, 100))
     parser.add_argument("--base-seed", type=int, default=1000)
+    parser.add_argument(
+        "--viewer-seed",
+        type=int,
+        help="replay one Stage 1 seed in the MuJoCo viewer instead of running a sweep",
+    )
     return parser.parse_args()
 
 
 def main() -> None:
     args = _parse_args()
+    if args.viewer_seed is not None:
+        cfg, resolved, summary, trace_text = _run_one(args.viewer_seed, viewer=True)
+        print_seed_table([_analyze(args.viewer_seed, cfg, resolved, summary, trace_text)])
+        return
     seeds = list(range(args.base_seed, args.base_seed + args.checkpoint))
     results = evaluate_with_cache(seeds)
     print_seed_table(results)

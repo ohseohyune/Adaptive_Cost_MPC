@@ -1,0 +1,4 @@
+episodes 0-199: difficulty=0.07 success_rate=0.000 bilateral_contact_rate=0.000 elapsed=0.04h
+episodes 200-399: difficulty=0.13 success_rate=0.170 bilateral_contact_rate=0.620 elapsed=0.26h
+episodes 400-599: difficulty=0.20 success_rate=0.005 bilateral_contact_rate=1.000 elapsed=0.48h
+episodes 600-799: difficulty=0.27 success_rate=0.000 bilateral_contact_rate=1.000 elapsed=0.71h

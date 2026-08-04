@@ -61,18 +61,6 @@ class BimanualTargets:
 
 
 @dataclass(frozen=True)
-class VirtualObjectState:
-    """Current/desired virtual object frame used by the bimanual task."""
-
-    current_transform: np.ndarray
-    desired_transform: np.ndarray
-    position_error: np.ndarray
-    rotation_error: np.ndarray
-    position_error_norm: float
-    rotation_error_norm: float
-
-
-@dataclass(frozen=True)
 class RelativePoseState:
     """Current bimanual relative transform and SE(3) constraint error."""
 
@@ -699,45 +687,6 @@ def bimanual_targets_at_time(
     )
 
 
-def virtual_object_state(
-    left_transform: np.ndarray,
-    right_transform: np.ndarray,
-    desired_object_transform: np.ndarray,
-) -> VirtualObjectState:
-    """
-    Build the current virtual object frame from both hands.
-
-    The current object position is the midpoint between the hands. For this
-    first object-centric stage, object orientation is kept simple and follows
-    the desired fixed object orientation; rotational object control is not yet
-    added to the IK stack.
-    """
-
-    left_transform = np.asarray(left_transform, dtype=float).reshape(4, 4)
-    right_transform = np.asarray(right_transform, dtype=float).reshape(4, 4)
-    desired_object_transform = np.asarray(
-        desired_object_transform, dtype=float
-    ).reshape(4, 4)
-
-    current_position = 0.5 * (left_transform[:3, 3] + right_transform[:3, 3])
-    current_transform = make_transform(
-        current_position,
-        desired_object_transform[:3, :3],
-    )
-    pose_error = compute_pose_error(current_transform, desired_object_transform)
-
-    return VirtualObjectState(
-        current_transform=current_transform,
-        desired_transform=desired_object_transform.copy(),
-        position_error=desired_object_transform[:3, 3] - current_position,
-        rotation_error=pose_error[:3],
-        position_error_norm=float(
-            np.linalg.norm(desired_object_transform[:3, 3] - current_position)
-        ),
-        rotation_error_norm=float(np.linalg.norm(pose_error[:3])),
-    )
-
-
 def desired_relative_transform(targets: BimanualTargets) -> np.ndarray:
     """Return T_rel_desired = inv(T_left_desired) @ T_right_desired."""
 
@@ -909,17 +858,6 @@ def _ee_jacobians_world(
     else:
         mujoco.mj_jacBody(model, data, jacp, jacr, arm.ee_body_id)
     return jacp[:, arm.qvel_indices].copy(), jacr[:, arm.qvel_indices].copy()
-
-
-def _position_jacobian_world(
-    model: mujoco.MjModel,
-    data: mujoco.MjData,
-    arm: SerialArm,
-) -> np.ndarray:
-    """Return the 3xdof world-frame EE position Jacobian for one arm."""
-
-    jacp, _ = _ee_jacobians_world(model, data, arm)
-    return jacp
 
 
 def _apply_arm_joint_delta(
@@ -1284,15 +1222,10 @@ def bimanual_object_clik_step(
     right_transform = get_ee_transform(data, right_arm)
     left_position = left_transform[:3, 3]
     right_position = right_transform[:3, 3]
-    object_state = virtual_object_state(
-        left_transform,
-        right_transform,
-        targets.object_transform,
-    )
-    object_position = object_state.current_transform[:3, 3]
+    object_position = 0.5 * (left_position + right_position)
     relative_translation = right_position - left_position
 
-    object_error = object_state.position_error
+    object_error = targets.object_transform[:3, 3] - object_position
     relative_error = (
         np.asarray(desired_relative_translation, dtype=float).reshape(3)
         - relative_translation
@@ -1526,10 +1459,8 @@ def bimanual_object_clik_step(
         "target_left_transform": targets.left_transform.copy(),
         "target_right_transform": targets.right_transform.copy(),
         "object_position": object_position,
-        "object_transform": object_state.current_transform,
         "target_object_position": targets.object_center.copy(),
         "target_object_transform": targets.object_transform.copy(),
-        "virtual_object_state": object_state,
         "relative_translation": relative_translation,
         "desired_relative_translation": np.asarray(
             desired_relative_translation, dtype=float

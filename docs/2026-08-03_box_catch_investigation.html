@@ -1,0 +1,250 @@
+<html><head><meta charset="utf-8"><style>
+body{font-family:'Malgun Gothic','Noto Sans CJK KR',sans-serif;font-size:11pt;line-height:1.5}
+h1{font-size:20pt;border-bottom:2px solid #333;padding-bottom:6px}
+h2{font-size:15pt;margin-top:22px;border-bottom:1px solid #999;padding-bottom:3px}
+h3{font-size:12.5pt;margin-top:16px}
+table{border-collapse:collapse;width:100%;margin:10px 0;font-size:10pt}
+th,td{border:1px solid #999;padding:5px 7px;text-align:left}
+th{background:#eee;font-weight:bold}
+code{font-family:Consolas,monospace;font-size:9.5pt;background:#f4f4f4;padding:1px 3px}
+pre{background:#f4f4f4;padding:8px;font-family:Consolas,monospace;font-size:9.5pt}
+.warn{background:#fff4f4;border-left:4px solid #c00;padding:8px 12px;margin:12px 0}
+.ok{background:#f2f8f2;border-left:4px solid #2a2;padding:8px 12px;margin:12px 0}
+.small{font-size:9.5pt;color:#555}
+</style></head><body>
+
+<h1>AC-MPC Box-Catch 조사 기록</h1>
+<p class="small">2026-08-03 &middot; 대상: <code>sweep_results/acmpc_box_catch_curriculum_postfix_v4_aabbfix.pt</code> (cond2, 3000 에피소드, 학습 시 성공률 0.841)<br>
+평가 조건: <code>full_wide_speed</code> 도메인, seed 1000~1059, <code>online_learning=False</code></p>
+
+<h2>0. 한 줄 요약</h2>
+<p>박스를 <b>받는 것(catching)은 이미 100% 해결</b>돼 있고, 모든 실패는 <b>5초 안정 유지(hold)</b>에서 발생한다.
+그 중 35%는 <b>박스 회전</b>이 원인이며, 회전의 원인인 <b>모서리 파지는 기하학적으로 불가피</b>하다.
+회전을 억제하는 유일하게 유효한 수단은 <b>파지력 증가</b>(<code>grasp_compression</code>)였다.
+한편 <b>cond2의 PPO 학습은 사실상 작동하지 않고 있다</b>는 사실이 별도로 확인됐다.</p>
+
+<h2>1. 확정된 발견</h2>
+
+<h3>1.1 병목은 catching이 아니라 hold다</h3>
+<p>120 에피소드 전부가 <b>양쪽 패드 접촉(bilateral contact)에 도달</b>했다. 접촉 실패, 워크스페이스 이탈,
+과충격 종료는 <b>0건</b>이다. 모든 실패는 <code>required_hold_s = 5.0</code>초를
+<code>timeout_s = 7.0</code>초 안에 <b>연속으로</b> 채우지 못한 것이다. 여유가 약 1.5초뿐이라 한 번의 미끄러짐이 치명적이다.</p>
+<p><b>시사점:</b> 보고 지표를 성공률 단독이 아니라 퍼널로 제시해야 한다 &mdash;
+P(bilateral contact) = 1.00, P(stable hold 5s | contact) = 0.72.</p>
+
+<h3>1.2 실패 원인 분해 (17건)</h3>
+<table>
+<tr><th>유형</th><th>건수</th><th>특징</th></tr>
+<tr><td><b>회전 제한</b> (1039/1041/1045/1051/1056/1059)</td><td>6 (35%)</td>
+<td>힘 위반 0.000, 전 구간 완벽한 파지. <code>strict_box_angular_speed_max_radps = 0.15</code>만 초과 (p95 0.163~0.229 &mdash; 기준의 10~50% 초과). 이 조건만 제거하면 6건 전부 성공 &rarr; 성공률 0.717 &rarr; 0.817</td></tr>
+<tr><td>힘 제한</td><td>7 (41%)</td><td>파지력이 <code>1.3&middot;mg/(2&mu;)</code> 아래로 하락. 회전은 정상</td></tr>
+<tr><td>파지 붕괴</td><td>4 (24%)</td><td>박스 텀블링 (p95 각속도 0.649 / 1.336 rad/s), 최대 유지 1초 미만</td></tr>
+</table>
+<p>선속도 조건(<code>0.05 m/s</code>)은 병목이 아니다. 성공 에피소드도 HOLD 스텝의 10%에서 위반하며, 조건을 제거해도 1건만 바뀐다.</p>
+
+<h3>1.3 위반의 양이 아니라 타이밍이 문제다</h3>
+<table>
+<tr><th>seed</th><th>각속도 위반 비율</th><th>결과</th></tr>
+<tr><td>1028</td><td>0.129 (12.9%)</td><td><b>성공</b></td></tr>
+<tr><td>1051</td><td>0.086 (8.6%)</td><td>실패 (4.93s)</td></tr>
+</table>
+<p>더 많이 위반한 쪽이 성공했다. 성공 에피소드는 접촉 후 ~1초 안에 흔들림을 수렴시키고 나머지 5초를 깨끗하게 간다.
+실패는 위반이 에피소드 전체에 흩어져 5초 연속 구간이 만들어지지 않는다.
+&rarr; 처방은 &ldquo;평균 각속도 낮추기&rdquo;가 아니라 <b>&ldquo;접촉 후 정착 시간 단축&rdquo;</b>이다.</p>
+
+<h3>1.4 모서리 파지는 기하학적으로 불가피하다</h3>
+<p>첫 접촉 시 박스의 앞면이 패드의 앞 모서리와 만난다. 따라서</p>
+<pre>box_COM_x &minus; pad_center_x = box_half_x + pad_half_x = 5.59 + 4.46 = 10.05 cm</pre>
+<p><b>우변에 패드 위치가 없다.</b> 패드를 어디에 두든 접촉점이 함께 이동하므로, 조준 보정으로는 원리적으로 제거할 수 없다.
+(<code>pad_half_x = 4.46 cm</code>는 선언 두께 0.006 m가 아니라, 패드 geom이 기울어져 장착된 결과다.)</p>
+<p>중력 토크 <code>&tau; = mg&middot;|dx| = 0.5 &times; 9.81 &times; 0.10 = 0.49 N&middot;m</code>가 박스를 돌린다.</p>
+
+<h3>1.5 오차 분해 &mdash; 예측은 정확하고 &ldquo;접촉 시각 정의&rdquo;가 틀렸다</h3>
+<table>
+<tr><th>성분</th><th>크기</th><th>판정</th></tr>
+<tr><td>속도 추정 오차 (<code>e_x^velocity</code>)</td><td>1.6 mm</td><td>문제 아님</td></tr>
+<tr><td>기하 모델 오차 (<code>e_x^geometry</code>)</td><td>6 mm</td><td>문제 아님</td></tr>
+<tr><td>팔의 명령 추종 오차</td><td>25 mm</td><td>기여하나 주범 아님</td></tr>
+<tr><td><b>접촉 시각 오차 (<code>e_x^TTC</code>)</b></td><td><b>69 mm</b></td><td><b>주범</b></td></tr>
+</table>
+<p>TTC는 <code>catch_plane_x = 0.30</code> 평면에 대해 풀리지만, 박스는 그 평면에 도달하기 전 (x&asymp;0.43) 패드에 부딪힌다.
+따라서 접촉이 ~93 ms 늦게 예측되고, 그동안 박스가 7 cm를 더 이동한다.
+또한 <code>position_after(remaining_ttc).x</code>는 정의상 <code>catch_plane_x</code>와 같으므로
+<b><code>intercept_center.x</code>는 접근 내내 0.30에 고정</b>되어 박스의 실제 x를 전혀 추종하지 않는다.</p>
+
+<h2>2. 반증된 시도 (전부 측정 근거 있음)</h2>
+<table>
+<tr><th>#</th><th>시도</th><th>결과 (30시드, baseline 0.800)</th></tr>
+<tr><td>1</td><td>조준 평면 오프셋 0.05 / 0.10 / 0.13 m</td><td>0.767 / 0.700 / 0.667 &mdash; 단조 악화. 각속도 개선 없음</td></tr>
+<tr><td>2</td><td><code>catch_plane_x</code> 0.35 / 0.40 / 0.43</td><td>0.800 / 0.700 / <b>0.067</b> (붕괴)</td></tr>
+<tr><td>3</td><td>발사 속도 &minus;1.0 / &minus;1.25 / &minus;1.5 / &minus;2.0</td><td>&minus;1.5에서 정점 (= 훈련 분포 평균, 정책 특화). 오프셋은 속도 무관</td></tr>
+<tr><td>4</td><td><code>target_flight_time_s</code> 0.80 / 1.05 / 1.30</td><td>0.067 / 0.000 / 0.000 (붕괴, 정책 OOD)</td></tr>
+<tr><td>5</td><td><code>precontact_gap</code> 0.025 / 0.040 / 0.060</td><td>0.000 &mdash; 피크힘 0.00 N, 박스가 통과</td></tr>
+<tr><td>6</td><td>닫기 리드 (<code>gap_close_lead_s</code>) 0.08 / 0.12 / 0.16</td><td>성공률 불변, 각속도 2~5배 악화. 갭 1 cm는 타이밍을 맞출 닫힘 동작 자체가 없음</td></tr>
+<tr><td>7</td><td>갭 0.040 + 리드 조합</td><td>0.000 &mdash; 여전히 미접촉</td></tr>
+<tr><td>8</td><td><code>hold_grasp_com_align</code> (접촉 후 재정렬)</td><td>0.800 &rarr; 0.800, 각속도 0.0227 &rarr; 0.0225 (소수점까지 동일)</td></tr>
+</table>
+<p><b>8번이 특히 중요:</b> <code>target_center</code>를 이동시키면 양쪽 패드가 함께 움직이고, 박스는 그 두 패드에만 잡혀 있으므로
+<b>파지 조립체 전체가 평행이동</b>할 뿐 상대 정렬은 변하지 않는다. 잡힌 물체를 그리퍼 이동으로 재정렬하는 것은
+제2의 반작용면 없이는 불가능하다.</p>
+
+<h3>2.1 부분적으로 작동한 것 &mdash; 중앙 파지</h3>
+<p>갭과 리드를 물리적으로 타당한 범위(계측된 패드 닫힘 속도 0.175 m/s 기준)로 잡으면 중앙 파지가 실제로 일어난다:</p>
+<table>
+<tr><th>gap</th><th>lead</th><th>접촉 성공</th><th>평균 |dx|</th></tr>
+<tr><td>0.010</td><td>0.00 (현재)</td><td>11/12</td><td>6.58 cm</td></tr>
+<tr><td><b>0.015</b></td><td><b>0.06</b></td><td>2/12</td><td><b>1.64 cm</b> (토크 1/4)</td></tr>
+<tr><td>0.020</td><td>0.08</td><td>0/12</td><td>&mdash;</td></tr>
+</table>
+<p>즉 <b>메커니즘은 작동하나 접촉률이 무너진다.</b> 계측 결과 이는 액추에이터 한계가 아니다 &mdash;
+<code>velocity_saturation_fraction</code>이 두 조건 모두 <b>0.0326</b>으로 동일하여, 정책이 자신의 속도 상한에
+접근조차 하지 않으며 갭이 커져도 더 세게 밀지 않는다. <b>얼어붙은 정책의 한계</b>이므로 재학습으로 회복될 여지가 있다.</p>
+
+<h2>3. 유일하게 성공한 개입: <code>grasp_compression</code></h2>
+<div class="ok">
+<b>0.030 &rarr; 0.080 에서 성공률 0.717 &rarr; 0.933 (60시드, +21.6%p)</b>
+</div>
+<table>
+<tr><th>grasp_compression</th><th>성공률 (60시드)</th><th>각속도 위반</th><th>힘 위반</th><th>첫 충돌 피크힘</th></tr>
+<tr><td>0.030 (현재)</td><td>0.717 (43/60)</td><td>0.0511</td><td>0.0159</td><td>13.29 N</td></tr>
+<tr><td><b>0.080</b></td><td><b>0.933 (56/60)</b></td><td>0.0148</td><td>0.0019</td><td>13.34 N</td></tr>
+<tr><td>0.110</td><td>0.017 (1/60)</td><td>0.0890</td><td>0.4504 (32 N 상한 초과)</td><td>13.43 N</td></tr>
+<tr><td>0.150</td><td>0.000</td><td>0.1711</td><td>0.1008</td><td>13.51 N</td></tr>
+</table>
+<p><b>원리:</b> 모서리 파지(지렛대 10 cm)를 없애는 대신, 접촉 패치의 <b>마찰 토크</b>를 키워 중력 토크를 이긴다.
+첫 충돌 피크힘이 변하지 않으므로 ImpactSafe(18 N) 조건은 영향받지 않는다.</p>
+<p><b>주의 1 &mdash; 절벽:</b> 0.110에서 급락하며, 0.080은 그 벼랑 끝이다. 안전 마진이 얇다.</p>
+<p><b>주의 2 &mdash; 성격:</b> 이것은 <b>미조정된 하이퍼파라미터</b>이지 알고리즘 기여가 아니다.
+이력을 보면 원래 0.008이었고 &ldquo;파지력 부족&rdquo;을 이유로 0.030으로 올렸으나, <b>충분히 올리지 않은 상태</b>였다.
+논문에는 알고리즘 성과가 아니라 &ldquo;파지력 하이퍼파라미터가 회전 실패의 지배적 원인이었다&rdquo;로 서술해야 한다.</p>
+<p><b>주의 3:</b> <code>grasp_compression</code>은 MPC의 압축 <i>천장</i>이므로 <b>actor가 학습으로 도달할 수 없는 영역</b>이다.
+즉 성능을 실제로 움직인 지렛대가 정책의 행동 공간 밖에 있었다.</p>
+
+<h2>4. cond2의 PPO 학습이 작동하지 않는다</h2>
+<p>3000 에피소드 / 약 11만 업데이트 후 훈련 로그(<code>..._postfix_v4_aabbfix.json</code>):</p>
+<table>
+<tr><th>지표</th><th>측정값</th><th>정상 범위</th></tr>
+<tr><td><code>approximate_KL</code> (중앙값)</td><td><b>1.09e&minus;05</b></td><td>~1e&minus;2</td></tr>
+<tr><td><code>actor_loss</code></td><td>0.01240 &plusmn; 0.00001 (3000ep 내내 상수)</td><td>감소 추세</td></tr>
+<tr><td><code>entropy</code></td><td>&minus;12.39 &rarr; &minus;12.42 (변화 없음)</td><td>변화 있어야</td></tr>
+<tr><td>성공률 학습곡선</td><td>0.830 / 0.827 / 0.858 / 0.820 / 0.855 (추세 없음)</td><td>상승</td></tr>
+<tr><td>학습된 residual (<code>tanh(net(obs))</code>)</td><td>평균 <b>1.8~5.7%</b> (허용 &plusmn;65%)</td><td>&mdash;</td></tr>
+<tr><td><code>weight_bound_hit</code></td><td>0.0000 (클램프 미접촉)</td><td>&mdash;</td></tr>
+</table>
+<p>출력층 가중치가 0 초기화 상태에서 거의 움직이지 않았다 (<code>net.5.weight |w|max = 0.0063</code>).
+이는 메모리에 기록된 &ldquo;고정 MPC 베이스라인이 Adaptive Actor와 동률(0.850/0.860)&rdquo;을 설명한다 &mdash;
+<b>성능의 실체는 손으로 짠 phase prior이고, PPO가 얹는 것은 거의 없다.</b></p>
+
+<h3>4.1 MPC gradient 감도 (가중치 +10% 섭동 시 속도 변화율)</h3>
+<table>
+<tr><th>phase</th><th>object</th><th>grasp</th><th>compression</th><th>velocity</th><th>smoothness</th></tr>
+<tr><td>INTERCEPT</td><td>6.0e&minus;03</td><td>3.4e&minus;02</td><td><b>1.6e&minus;05</b></td><td>3.3e&minus;02</td><td>1.2e&minus;03</td></tr>
+<tr><td>PRE_IMPACT</td><td>2.1e&minus;03</td><td>1.1e&minus;02</td><td><b>1.4e&minus;04</b></td><td>1.1e&minus;02</td><td>9.0e&minus;04</td></tr>
+<tr><td>CAPTURE</td><td>2.9e&minus;02</td><td>2.2e&minus;02</td><td>5.3e&minus;03</td><td>3.9e&minus;02</td><td>9.3e&minus;03</td></tr>
+<tr><td>HOLD</td><td>4.7e&minus;02</td><td>2.8e&minus;02</td><td>6.6e&minus;02</td><td>5.5e&minus;02</td><td>4.5e&minus;03</td></tr>
+</table>
+<p>대부분 정상이나, <b>INTERCEPT/PRE_IMPACT의 compression은 학습 불가능</b>하다 (prior 0.05 vs grasp 250).</p>
+
+<h3>4.2 설계 결함: 회전이 관측에도 보상에도 없다</h3>
+<p>박스 각속도는 <b>성공 조건에는 포함되지만</b>(<code>strict_angular_ok</code>),
+observation에도 reward에도 존재하지 않는다. 실패의 35%를 유발하는 요인을 정책이 볼 수 없다.
+따라서 현재 구조에서는 &ldquo;모서리를 피하라&rdquo;가 학습될 수 없으며, 보상 구조는 오히려
+&ldquo;일찍 닫아 접촉 보너스를 확보하라&rdquo;(= 모서리 파지)를 유도한다.</p>
+
+<h2>5. 신뢰도 경고 &mdash; 반드시 확인 필요</h2>
+<div class="warn">
+<b>오늘 작성한 모든 평가 스크립트에 <code>weight_delta_fraction = 0.0</code>이 들어 있었다.</b><br><br>
+<code>weights = base &times; (1 + delta_fraction &times; residual)</code> 이므로 <code>delta_fraction = 0</code>이면
+신경망 출력이 0으로 곱해져 <b>학습된 부분이 완전히 무력화</b>된다.
+원인은 평가 하네스를 <code>box_catch_sweep_train.run_one_config</code>(고정 베이스라인 <b>전용</b> 함수)에서 복사한 것이다.<br><br>
+따라서 <b>2~3장의 모든 성능 수치는 cond2(학습된 정책)가 아니라 cond1(고정 phase prior)의 값</b>이다.
+<b>재측정 결과 (60시드, <code>weight_delta_fraction = 0.65</code>):</b>
+<table>
+<tr><th>조건</th><th>성공률</th><th>각속도 위반</th><th>residual</th></tr>
+<tr><td>cond1 (delta = 0.00, 고정 prior)</td><td>0.7167 (43/60)</td><td>0.0511</td><td>0.00000</td></tr>
+<tr><td><b>cond2 (delta = 0.65, 학습됨)</b></td><td><b>0.7500 (45/60)</b></td><td>0.0440</td><td>0.04054</td></tr>
+</table>
+차이는 <b>+3.3%p (60시드 중 2개)</b>로 작다. 즉 2~3장의 수치는 실제 cond2보다 약 3%p 낮게 잡혀 있으나
+<b>결론의 방향은 바뀌지 않는다</b>. 그리고 이 결과는 4장의 &ldquo;학습이 거의 일어나지 않았다&rdquo;를
+<b>성능 측면에서도 확증</b>한다 &mdash; 3000 에피소드 학습의 순효과가 60시드 중 2개다.
+</div>
+<p><b>영향받지 않는 결론</b> (독립 근거가 있음):</p>
+<ul>
+<li>4장의 학습 진단 &mdash; 실제 훈련 run의 JSON 로그 기반</li>
+<li>residual 1.8~5.7% 측정 &mdash; <code>net</code>을 직접 호출해 <code>delta_fraction</code>을 우회함</li>
+<li>1.4의 기하 항등식 &mdash; 대수적 유도이며 실험값이 아님</li>
+</ul>
+<p><b>재측정 필요:</b> 2장·3장의 모든 성공률 수치, 1.2의 퍼널 분해.</p>
+
+<h2>6. 폐기된 가설 (기록용)</h2>
+<table>
+<tr><th>주장했던 것</th><th>실제</th></tr>
+<tr><td>&ldquo;<code>log_std</code>가 +3.5로 폭주해 탐색 노이즈가 의도의 5.5배&rdquo;</td>
+<td><b>오독.</b> 진단 출력이 절대값(<code>|w|mean</code>)이었다. 실제 <code>log_std = &minus;3.506</code>,
+<code>exp() = 0.0300</code> = 설계 의도값 정확히. clamp 범위 안이라 무작용.</td></tr>
+<tr><td>&ldquo;SNR 1/14로 학습 신호가 노이즈에 묻힘&rdquo;</td><td>실제 약 1/2.5. 불리하나 주된 설명이 못 됨</td></tr>
+<tr><td>&ldquo;액추에이터 대역폭 한계로 중앙 파지 불가&rdquo;</td>
+<td><b>반증.</b> <code>velocity_saturation_fraction = 0.0326</code> &mdash; 정책이 상한 근처에도 안 감</td></tr>
+<tr><td>&ldquo;<code>catch_plane_x</code>는 잘못 설정된 상수&rdquo;</td>
+<td><b>반증.</b> 13 cm는 물리적 거리이며, 평면을 옮기면 발사 기하까지 바뀌어 태스크가 파괴됨</td></tr>
+</table>
+
+<h2>7. 코드 변경 내역</h2>
+<table>
+<tr><th>파일</th><th>변경</th><th>기본값</th></tr>
+<tr><td><code>main_acmpc_box_catch.py</code></td><td><code>ground_truth_object_velocity</code> 플래그 + 측정 결과 주석</td><td>False (no-op)</td></tr>
+<tr><td><code>main_acmpc_box_catch.py</code></td><td><code>grasp_compression</code>을 config로 노출 (기존 하드코딩 0.030)</td><td>0.030 (no-op)</td></tr>
+<tr><td><code>main_acmpc_box_catch.py</code></td><td><code>gap_close_lead_s</code> + <code>GAPDBG</code> 계측</td><td>0.0 (no-op)</td></tr>
+<tr><td><code>main_acmpc_box_catch.py</code></td><td><code>hold_grasp_com_align</code> 3필드 (측정 무효, <code>diagnose_hold_rotation.py</code> 호환용 유지)</td><td>False (no-op)</td></tr>
+<tr><td><code>main_acmpc_box_catch.py</code></td><td>진단 필드: <code>mean_abs_actor_residual</code>, <code>effective_action_std</code>, <code>raw_log_std_mean</code></td><td>&mdash;</td></tr>
+<tr><td><code>main_acmpc_box_catch_curriculum.py</code></td><td><code>entropy_coef</code>/<code>log_std_min</code>/<code>log_std_max</code> CLI 노출</td><td>기존값 (no-op)</td></tr>
+</table>
+<p class="small">되돌린 것: <code>intercept_plane_offset_m</code> (반증 후 제거).
+주의: <code>main_acmpc_box_catch.py</code>에는 이번 작업 이전부터 커밋되지 않은 변경
+(<code>_pad_box_facing_surface_x</code>, <code>target_override_fn</code>, <code>position_remaining_ttc</code>, live-state 블록)이 존재하며 손대지 않았다.</p>
+
+<h2>8. 다음 단계</h2>
+<h3>우선순위 1 &mdash; 수치 재측정 (완료 일부)</h3>
+<p>cond1 vs cond2 비교는 완료됐다 (5장 참조): 0.7167 vs 0.7500, 차이 +3.3%p.
+남은 작업은 <b>3장의 <code>grasp_compression</code> 스윕을 cond2에서 재측정</b>하는 것이다.
+0.080의 +21.6%p가 cond2에서도 재현되는지, 0.110 절벽 위치가 같은지 확인해야 한다.
+2장의 반증 8건은 효과 크기가 크고(붕괴 수준) 방향이 명확하므로 재측정 우선순위가 낮다.</p>
+
+<h3>우선순위 2 &mdash; 학습이 왜 안 되는지 규명</h3>
+<p>탐색 노이즈는 원인이 아님이 확인됐으므로, 남은 후보는:</p>
+<ul>
+<li><code>maximum_online_actor_delta = 0.02</code> / <code>maximum_cumulative_actor_delta</code> &mdash; 업데이트당 이동량 하드 캡</li>
+<li>actor learning rate</li>
+<li>advantage 정규화 / 스케일</li>
+<li><code>rollout_size = 16</code> (PPO 표준의 2~3자릿수 아래)의 gradient 분산</li>
+</ul>
+<p>판정 지표는 성공률이 아니라 <code>approximate_KL</code>(1e&minus;5 &rarr; 1e&minus;3 이상)과
+<code>mean_abs_actor_residual</code>(2~4% &rarr; 10% 이상)이어야 한다. phase prior만으로 0.72가 나오므로
+성공률로는 학습 여부를 구분할 수 없다.</p>
+
+<h3>우선순위 3 &mdash; 회전을 관측·보상에 추가</h3>
+<p>observation에 <code>clip(|&omega;_box| / 0.15, 0, 2)</code> 1차원, reward에
+<code>&minus; w_ang &middot; max(0, |&omega;_box| &minus; 0.15)&sup2;</code> 1항. 단 우선순위 2가 해결된 뒤에 의미가 있다.</p>
+
+<h3>우선순위 4 &mdash; 기하 재학습</h3>
+<p><code>precontact_gap</code> 0.012~0.015 + <code>gap_close_lead_s</code> 0.06 으로 재학습.
+목표는 <b>p90 |dx| &le; 3 cm</b>(평균 &le; 2 cm)이며, 이는 토크를 절반으로 줄여
+<code>grasp_compression</code>을 0.045로 낮추고도 성능을 유지 &mdash; 즉 0.110 절벽까지의 마진을 2배로 확보하기 위함이다.
+1순위 판정 지표는 <b>접촉률 &ge; 95%</b>다.</p>
+
+<h2>9. 부수 확인 사항</h2>
+<ul>
+<li><b>Ballistic Predictor:</b> 에피소드 시작 시 MuJoCo의 실제 속도로 시드된 뒤 EMA(&alpha;=0.35)로 평활화된다.
+ground truth로 교체해도 차이 없음 (0.717 vs 0.683, McNemar p=0.79). &ldquo;object state는 관측 가능하다고 가정&rdquo;으로 서술하면 되며 코드는 유지.</li>
+<li><b>HOLD&rarr;CAPTURE 강등:</b> 의도적 설계 결정이며(주석에 대안 기각 근거 존재) 성공을 방해할 수 없음이
+<code>strict_stable_contact &rArr; both_pads_at_required_force</code>로 증명된다. 단 복구율은 0/9.
+부작용: 학습 중 강등 시 <code>exploring = online_learning and phase is not HOLD</code> 때문에 가장 불안정한 순간에 탐색 노이즈가 재활성화된다.</li>
+<li><b>Rollout Buffer:</b> <code>rollout_size = 16</code>, truncation bootstrap(<code>next_value = predict_value(observation)</code>)과
+<code>done</code> 마스킹이 짝을 이루므로 의도적 설계다. 에피소드 경계 교차 여부는
+<code>accumulate_rollout_across_episodes</code> 플래그로 별도 실험된 축이다.</li>
+<li><b>Phase 이원성:</b> <code>CatchPhase</code>(6개, 제어 상태)와 정책이 관측하는
+<b>smoothstep 블렌딩된 소프트 one-hot</b>(4개 control phase, <code>phase_blend_time_s = 0.08</code>)은 다른 것이다.
+용어집에는 &ldquo;Phase / Phase Encoding / Phase Prior&rdquo; 세 항목으로 분리하고, <code>CatchControlPhase</code>라는 enum 이름은 올리지 않는다.</li>
+</ul>
+
+</body></html>

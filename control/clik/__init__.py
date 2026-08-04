@@ -17,7 +17,6 @@ from control.clik.bimanual import (
     RelativeAxisState,
     RelativeOrientationState,
     RelativePoseState,
-    VirtualObjectState,
     bimanual_object_clik_step,
     bimanual_targets_at_time,
     build_bimanual_task_stack,
@@ -44,7 +43,6 @@ from control.clik.bimanual import (
     solve_bimanual_task_stack,
     solve_bimanual_task_stack_with_qp,
     solve_bimanual_task_stack_with_nullspace,
-    virtual_object_state,
     yoshikawa_manipulability,
 )
 from control.clik.controller import pose_clik_step
@@ -127,7 +125,6 @@ __all__ = [
     "RelativeOrientationState",
     "RelativeAxisState",
     "RelativePoseState",
-    "VirtualObjectState",
     "GainSweepConfig",
     "SerialArm",
     "SerialArmConfig",
@@ -183,7 +180,6 @@ __all__ = [
     "relative_orientation_state",
     "relative_local_axis_state",
     "relative_z_axis_state",
-    "virtual_object_state",
     "yoshikawa_manipulability",
     "run_gain_sweep",
     "run_pose_clik_trial",

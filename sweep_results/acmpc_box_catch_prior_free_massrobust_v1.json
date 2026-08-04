@@ -1,0 +1,2002 @@
+[
+  {
+    "episode": 0,
+    "difficulty": 0.0,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5000000000000003,
+    "final_speed": 59.104540947833826,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 1,
+    "difficulty": 0.0003333333333333333,
+    "success": true,
+    "hold": 5.009999999999938,
+    "bilateral_contact_time_s": 0.5000000000000003,
+    "final_speed": 0.03229315150944863,
+    "failure_reason": "",
+    "transitions": 664
+  },
+  {
+    "episode": 2,
+    "difficulty": 0.0006666666666666666,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5000000000000003,
+    "final_speed": 58.88160130339203,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 3,
+    "difficulty": 0.001,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 58.987081226021324,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 4,
+    "difficulty": 0.0013333333333333333,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 59.05217678719353,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 5,
+    "difficulty": 0.0016666666666666668,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 59.34848342424871,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 6,
+    "difficulty": 0.002,
+    "success": false,
+    "hold": 4.43999999999995,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 0.02485306364900415,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 7,
+    "difficulty": 0.0023333333333333335,
+    "success": false,
+    "hold": 4.329999999999952,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 0.031294506130673035,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 8,
+    "difficulty": 0.0026666666666666666,
+    "success": false,
+    "hold": 4.4499999999999496,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 0.02516469295486649,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 9,
+    "difficulty": 0.003,
+    "success": false,
+    "hold": 4.489999999999949,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 0.02522317561129314,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 10,
+    "difficulty": 0.0033333333333333335,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 59.23018368350303,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 11,
+    "difficulty": 0.0036666666666666666,
+    "success": false,
+    "hold": 4.599999999999946,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 0.03005998499212585,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 12,
+    "difficulty": 0.004,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5200000000000004,
+    "final_speed": 9.051411906150872,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 13,
+    "difficulty": 0.004333333333333333,
+    "success": false,
+    "hold": 4.599999999999946,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 0.02627401305250336,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 14,
+    "difficulty": 0.004666666666666667,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5200000000000004,
+    "final_speed": 9.247993694901993,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 15,
+    "difficulty": 0.005,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5200000000000004,
+    "final_speed": 8.965934509354152,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 16,
+    "difficulty": 0.005333333333333333,
+    "success": false,
+    "hold": 4.519999999999948,
+    "bilateral_contact_time_s": 0.5200000000000004,
+    "final_speed": 0.026808041815931938,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 17,
+    "difficulty": 0.005666666666666667,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 59.1498672965718,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 18,
+    "difficulty": 0.006,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 59.76469803249907,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 19,
+    "difficulty": 0.006333333333333333,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 0.09346974157937475,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 20,
+    "difficulty": 0.006666666666666667,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 0.07074573196177829,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 21,
+    "difficulty": 0.007,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 59.301913020078,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 22,
+    "difficulty": 0.007333333333333333,
+    "success": false,
+    "hold": 4.479999999999949,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 0.026124284350354295,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 23,
+    "difficulty": 0.007666666666666666,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 58.68285684571008,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 24,
+    "difficulty": 0.008,
+    "success": false,
+    "hold": 2.949999999999981,
+    "bilateral_contact_time_s": 0.5200000000000004,
+    "final_speed": 0.02758980241926268,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 25,
+    "difficulty": 0.008333333333333333,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 58.851253593082866,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 26,
+    "difficulty": 0.008666666666666666,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 59.520540206169834,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 27,
+    "difficulty": 0.009,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 59.367094411235584,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 28,
+    "difficulty": 0.009333333333333334,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 48.666271627236505,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 29,
+    "difficulty": 0.009666666666666667,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 52.07553963762811,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 30,
+    "difficulty": 0.01,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 49.65549980083223,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 31,
+    "difficulty": 0.010333333333333333,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 59.37388010145818,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 32,
+    "difficulty": 0.010666666666666666,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 59.324125823629,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 33,
+    "difficulty": 0.011,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 59.242189576647654,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 34,
+    "difficulty": 0.011333333333333334,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 59.184106463610746,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 35,
+    "difficulty": 0.011666666666666667,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 59.17865302810689,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 36,
+    "difficulty": 0.012,
+    "success": false,
+    "hold": 4.459999999999949,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 0.02717434247452554,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 37,
+    "difficulty": 0.012333333333333333,
+    "success": false,
+    "hold": 4.41999999999995,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 0.030011173260054147,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 38,
+    "difficulty": 0.012666666666666666,
+    "success": false,
+    "hold": 4.339999999999952,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 0.024930968241506455,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 39,
+    "difficulty": 0.013,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 59.13839129168813,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 40,
+    "difficulty": 0.013333333333333334,
+    "success": false,
+    "hold": 4.479999999999949,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 0.029693304111276304,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 41,
+    "difficulty": 0.013666666666666667,
+    "success": false,
+    "hold": 4.42999999999995,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 0.029486089567021076,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 42,
+    "difficulty": 0.014,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 59.055693146777074,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 43,
+    "difficulty": 0.014333333333333333,
+    "success": false,
+    "hold": 4.4999999999999485,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 0.028052125425031226,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 44,
+    "difficulty": 0.014666666666666666,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 59.13949323025857,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 45,
+    "difficulty": 0.015,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 58.913942148294,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 46,
+    "difficulty": 0.015333333333333332,
+    "success": false,
+    "hold": 4.42999999999995,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 0.024529651067598513,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 47,
+    "difficulty": 0.015666666666666666,
+    "success": true,
+    "hold": 5.009999999999938,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 0.0251856544536886,
+    "failure_reason": "",
+    "transitions": 679
+  },
+  {
+    "episode": 48,
+    "difficulty": 0.016,
+    "success": true,
+    "hold": 5.009999999999938,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 0.02793196327575995,
+    "failure_reason": "",
+    "transitions": 673
+  },
+  {
+    "episode": 49,
+    "difficulty": 0.01633333333333333,
+    "success": false,
+    "hold": 4.249999999999954,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 0.025750496072309587,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 50,
+    "difficulty": 0.016666666666666666,
+    "success": false,
+    "hold": 4.3599999999999515,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 0.02467236232876473,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 51,
+    "difficulty": 0.017,
+    "success": false,
+    "hold": 4.40999999999995,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 0.02501959255564572,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 52,
+    "difficulty": 0.017333333333333333,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 59.295481485909406,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 53,
+    "difficulty": 0.017666666666666667,
+    "success": false,
+    "hold": 4.489999999999949,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 0.02584577707661779,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 54,
+    "difficulty": 0.018,
+    "success": false,
+    "hold": 4.539999999999948,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 0.025497996519433876,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 55,
+    "difficulty": 0.018333333333333333,
+    "success": false,
+    "hold": 4.579999999999947,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 0.030831043944584247,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 56,
+    "difficulty": 0.018666666666666668,
+    "success": false,
+    "hold": 0.060000000000000005,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 0.03762832382437828,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 57,
+    "difficulty": 0.019,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 0.027734167010735857,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 58,
+    "difficulty": 0.019333333333333334,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 0.03017967984337967,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 59,
+    "difficulty": 0.019666666666666666,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 0.02582399207929471,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 60,
+    "difficulty": 0.02,
+    "success": false,
+    "hold": 4.759999999999943,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 0.024886892494083764,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 61,
+    "difficulty": 0.02033333333333333,
+    "success": false,
+    "hold": 4.749999999999943,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 0.02846776855008647,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 62,
+    "difficulty": 0.020666666666666667,
+    "success": false,
+    "hold": 4.569999999999947,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 0.02563705825940844,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 63,
+    "difficulty": 0.021,
+    "success": false,
+    "hold": 4.699999999999944,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 0.026198030452454772,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 64,
+    "difficulty": 0.021333333333333333,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 0.06933588515861491,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 65,
+    "difficulty": 0.021666666666666667,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 0.13940849962580854,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 66,
+    "difficulty": 0.022,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 1.96829761603864,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 67,
+    "difficulty": 0.022333333333333334,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 0.1680532497312512,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 68,
+    "difficulty": 0.02266666666666667,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 0.19083023651200734,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 69,
+    "difficulty": 0.023,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 0.08271755763199791,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 70,
+    "difficulty": 0.023333333333333334,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 0.12220088147332858,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 71,
+    "difficulty": 0.023666666666666666,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 0.10955141483783883,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 72,
+    "difficulty": 0.024,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 0.14745889067512627,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 73,
+    "difficulty": 0.024333333333333332,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 1.4266001015837926,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 74,
+    "difficulty": 0.024666666666666667,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 0.05384522639328955,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 75,
+    "difficulty": 0.025,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 0.14023168730938065,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 76,
+    "difficulty": 0.025333333333333333,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 0.10862054088261378,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 77,
+    "difficulty": 0.025666666666666667,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 2.3535172685735573,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 78,
+    "difficulty": 0.026,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 0.17412694426589775,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 79,
+    "difficulty": 0.026333333333333334,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 0.07209609236869854,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 80,
+    "difficulty": 0.02666666666666667,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 0.1963871105273884,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 81,
+    "difficulty": 0.027,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 0.08848901559103182,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 82,
+    "difficulty": 0.027333333333333334,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 0.11441811424402469,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 83,
+    "difficulty": 0.027666666666666666,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 0.07563684665652289,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 84,
+    "difficulty": 0.028,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 59.16888825082223,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 85,
+    "difficulty": 0.028333333333333332,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 0.1711240436512942,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 86,
+    "difficulty": 0.028666666666666667,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 0.07454883104168952,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 87,
+    "difficulty": 0.029,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 0.03598834843470658,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 88,
+    "difficulty": 0.029333333333333333,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 0.16010473666902114,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 89,
+    "difficulty": 0.029666666666666668,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 0.04378441469111131,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 90,
+    "difficulty": 0.03,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5200000000000004,
+    "final_speed": 58.59342053108071,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 91,
+    "difficulty": 0.030333333333333334,
+    "success": false,
+    "hold": 0.07,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 0.03137127580302074,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 92,
+    "difficulty": 0.030666666666666665,
+    "success": false,
+    "hold": 0.07,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 0.03245211484091731,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 93,
+    "difficulty": 0.031,
+    "success": false,
+    "hold": 0.15,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 0.02745918934844106,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 94,
+    "difficulty": 0.03133333333333333,
+    "success": false,
+    "hold": 0.060000000000000005,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 0.031207148897635564,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 95,
+    "difficulty": 0.03166666666666667,
+    "success": false,
+    "hold": 4.569999999999947,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 0.027890831309930048,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 96,
+    "difficulty": 0.032,
+    "success": false,
+    "hold": 4.579999999999947,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 0.026672547175549698,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 97,
+    "difficulty": 0.03233333333333333,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 59.05890295369671,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 98,
+    "difficulty": 0.03266666666666666,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 58.62173016566525,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 99,
+    "difficulty": 0.033,
+    "success": false,
+    "hold": 4.599999999999946,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 0.02596780696922379,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 100,
+    "difficulty": 0.03333333333333333,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 59.34760757512231,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 101,
+    "difficulty": 0.033666666666666664,
+    "success": false,
+    "hold": 4.729999999999944,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 0.030881235244088208,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 102,
+    "difficulty": 0.034,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 59.387385379469514,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 103,
+    "difficulty": 0.034333333333333334,
+    "success": false,
+    "hold": 4.769999999999943,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 0.025503962795394023,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 104,
+    "difficulty": 0.034666666666666665,
+    "success": false,
+    "hold": 4.719999999999944,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 0.024778591056000852,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 105,
+    "difficulty": 0.035,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 59.06435359161823,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 106,
+    "difficulty": 0.035333333333333335,
+    "success": false,
+    "hold": 4.659999999999945,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 0.0312693080134609,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 107,
+    "difficulty": 0.035666666666666666,
+    "success": false,
+    "hold": 4.3599999999999515,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 0.03155978746598612,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 108,
+    "difficulty": 0.036,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 52.09935675148308,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 109,
+    "difficulty": 0.036333333333333336,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 59.94699412579673,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 110,
+    "difficulty": 0.03666666666666667,
+    "success": false,
+    "hold": 4.619999999999946,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 0.026597192241319245,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 111,
+    "difficulty": 0.037,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 59.712849476740544,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 112,
+    "difficulty": 0.037333333333333336,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 55.11959723233335,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 113,
+    "difficulty": 0.03766666666666667,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 59.74110874197872,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 114,
+    "difficulty": 0.038,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 59.93000297823906,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 115,
+    "difficulty": 0.03833333333333333,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 54.40067391968113,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 116,
+    "difficulty": 0.03866666666666667,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 50.2135172240604,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 117,
+    "difficulty": 0.039,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 59.51263489789838,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 118,
+    "difficulty": 0.03933333333333333,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 59.54686948437663,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 119,
+    "difficulty": 0.03966666666666667,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 51.92326513085621,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 120,
+    "difficulty": 0.04,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 54.17023131097519,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 121,
+    "difficulty": 0.04033333333333333,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 54.88960984556355,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 122,
+    "difficulty": 0.04066666666666666,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 53.51043534296626,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 123,
+    "difficulty": 0.041,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 41.942962172997206,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 124,
+    "difficulty": 0.04133333333333333,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 50.92369140785958,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 125,
+    "difficulty": 0.041666666666666664,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 59.98916829815186,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 126,
+    "difficulty": 0.042,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 54.76275730672686,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 127,
+    "difficulty": 0.042333333333333334,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 52.56445800795754,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 128,
+    "difficulty": 0.042666666666666665,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 55.35634065989587,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 129,
+    "difficulty": 0.043,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 55.17405154563749,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 130,
+    "difficulty": 0.043333333333333335,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 59.68522109796251,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 131,
+    "difficulty": 0.043666666666666666,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 54.173927834038565,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 132,
+    "difficulty": 0.044,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5200000000000004,
+    "final_speed": 59.50766189682977,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 133,
+    "difficulty": 0.044333333333333336,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 59.879603129453024,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 134,
+    "difficulty": 0.04466666666666667,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 60.044668520630665,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 135,
+    "difficulty": 0.045,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 59.979022250757005,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 136,
+    "difficulty": 0.04533333333333334,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 43.430742886795564,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 137,
+    "difficulty": 0.04566666666666667,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 54.24239083265323,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 138,
+    "difficulty": 0.046,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 55.38926677380735,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 139,
+    "difficulty": 0.04633333333333333,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 60.410346869840666,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 140,
+    "difficulty": 0.04666666666666667,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 60.18426362729784,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 141,
+    "difficulty": 0.047,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5200000000000004,
+    "final_speed": 59.85187870725129,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 142,
+    "difficulty": 0.04733333333333333,
+    "success": false,
+    "hold": 4.859999999999941,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 0.03219217115785873,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 143,
+    "difficulty": 0.04766666666666667,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 1.2047064783381325,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 144,
+    "difficulty": 0.048,
+    "success": false,
+    "hold": 4.88999999999994,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 0.03216157504987888,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 145,
+    "difficulty": 0.04833333333333333,
+    "success": false,
+    "hold": 4.7799999999999425,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 0.037925202861192796,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 146,
+    "difficulty": 0.048666666666666664,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 60.11229088195326,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 147,
+    "difficulty": 0.049,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 60.283327164673274,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 148,
+    "difficulty": 0.04933333333333333,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 60.04847994776579,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 149,
+    "difficulty": 0.049666666666666665,
+    "success": false,
+    "hold": 4.989999999999938,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 0.027063977905918125,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 150,
+    "difficulty": 0.05,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 60.35858010079492,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 151,
+    "difficulty": 0.050333333333333334,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 60.345448482960364,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 152,
+    "difficulty": 0.050666666666666665,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 55.16588738156441,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 153,
+    "difficulty": 0.051,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 55.42621132334999,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 154,
+    "difficulty": 0.051333333333333335,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 60.62251456533214,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 155,
+    "difficulty": 0.051666666666666666,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 60.127473926211785,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 156,
+    "difficulty": 0.052,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 60.16393560100512,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 157,
+    "difficulty": 0.052333333333333336,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 0.05973028614174224,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 158,
+    "difficulty": 0.05266666666666667,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 60.47605784133818,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 159,
+    "difficulty": 0.053,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 12.872553376161685,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 160,
+    "difficulty": 0.05333333333333334,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 0.9260109003959957,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 161,
+    "difficulty": 0.05366666666666667,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 60.199541350128854,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 162,
+    "difficulty": 0.054,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 0.06625132237748693,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 163,
+    "difficulty": 0.05433333333333333,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5200000000000004,
+    "final_speed": 9.789448836345485,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 164,
+    "difficulty": 0.05466666666666667,
+    "success": false,
+    "hold": 3.3399999999999728,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 0.03613397996153914,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 165,
+    "difficulty": 0.055,
+    "success": false,
+    "hold": 3.989999999999959,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 0.03655520927536164,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 166,
+    "difficulty": 0.05533333333333333,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 4.272571418275189,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 167,
+    "difficulty": 0.05566666666666667,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5200000000000004,
+    "final_speed": 3.382318181595225,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 168,
+    "difficulty": 0.056,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 60.457214382445,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 169,
+    "difficulty": 0.05633333333333333,
+    "success": false,
+    "hold": 4.559999999999947,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 0.03706670371457263,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 170,
+    "difficulty": 0.056666666666666664,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 60.20710352248117,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 171,
+    "difficulty": 0.057,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5200000000000004,
+    "final_speed": 60.21579580815567,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 172,
+    "difficulty": 0.05733333333333333,
+    "success": false,
+    "hold": 4.509999999999948,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 0.037516782205653895,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 173,
+    "difficulty": 0.057666666666666665,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5200000000000004,
+    "final_speed": 17.15078130610806,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 174,
+    "difficulty": 0.058,
+    "success": false,
+    "hold": 4.4999999999999485,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 0.02770597649324897,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 175,
+    "difficulty": 0.058333333333333334,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 60.27978382329534,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 176,
+    "difficulty": 0.058666666666666666,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 0.061596466296389187,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 177,
+    "difficulty": 0.059,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 0.05825326370944943,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 178,
+    "difficulty": 0.059333333333333335,
+    "success": false,
+    "hold": 4.479999999999949,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 0.037783326355734656,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 179,
+    "difficulty": 0.059666666666666666,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 0.06322110395696247,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 180,
+    "difficulty": 0.06,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 60.135216275249974,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 181,
+    "difficulty": 0.060333333333333336,
+    "success": false,
+    "hold": 4.4499999999999496,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 0.037230222987090875,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 182,
+    "difficulty": 0.06066666666666667,
+    "success": false,
+    "hold": 4.43999999999995,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 0.03813717329191406,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 183,
+    "difficulty": 0.061,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 0.06256896679770547,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 184,
+    "difficulty": 0.06133333333333333,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 60.16008966262239,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 185,
+    "difficulty": 0.06166666666666667,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 53.61962301325649,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 186,
+    "difficulty": 0.062,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 56.35056204642262,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 187,
+    "difficulty": 0.06233333333333333,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 60.12495662750047,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 188,
+    "difficulty": 0.06266666666666666,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 55.85760254948516,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 189,
+    "difficulty": 0.063,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 60.58778917221128,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 190,
+    "difficulty": 0.06333333333333334,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 59.90076922137241,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 191,
+    "difficulty": 0.06366666666666666,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 60.01217740278273,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 192,
+    "difficulty": 0.064,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 0.06777895901623063,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 193,
+    "difficulty": 0.06433333333333334,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 2.9796113715776844,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 194,
+    "difficulty": 0.06466666666666666,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5200000000000004,
+    "final_speed": 8.053832866070078,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 195,
+    "difficulty": 0.065,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 60.31746115143795,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 196,
+    "difficulty": 0.06533333333333333,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 6.784715287492089,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 197,
+    "difficulty": 0.06566666666666666,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 16.77013941271679,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 198,
+    "difficulty": 0.066,
+    "success": false,
+    "hold": 0.0,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 0.5666341560352686,
+    "failure_reason": "timeout",
+    "transitions": 700
+  },
+  {
+    "episode": 199,
+    "difficulty": 0.06633333333333333,
+    "success": false,
+    "hold": 4.599999999999946,
+    "bilateral_contact_time_s": 0.5100000000000003,
+    "final_speed": 0.03820978045984839,
+    "failure_reason": "timeout",
+    "transitions": 700
+  }
+]

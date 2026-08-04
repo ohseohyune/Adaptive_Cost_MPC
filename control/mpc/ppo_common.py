@@ -42,6 +42,11 @@ class PPOUpdateSummary:
     # pass. None when the caller never computes it (e.g. ppo_cost_adapter's
     # update()); NaN when return variance is too small for a stable ratio.
     explained_variance: Optional[float] = None
+    # Pre-normalization GAE advantage std and mean actor gradient norm
+    # (pre-clip) -- batch-size/diversity diagnostics for comparing
+    # rollout_size configurations. 0.0 when the caller never computes them.
+    advantage_std: float = 0.0
+    actor_grad_norm: float = 0.0
 
 
 def generalized_advantage_estimate(

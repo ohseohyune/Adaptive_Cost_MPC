@@ -25,21 +25,7 @@ except ImportError:  # pragma: no cover - exercised by the "not installed" path
 from control.mpc.ppo_common import PPOUpdateSummary
 from control.squeeze.pad_contact import BilateralPadContact
 
-COST_NAMES = ("object", "grasp", "force", "velocity", "smoothness")
-# Log-key labels, not the dict keys used to index ACMPCAction.weights (those
-# stay COST_NAMES exactly, unchanged, for actor/checkpoint compatibility).
-# COST_NAMES[2] ("force") does not track any measured or predicted contact
-# force -- it is a compression-distance proxy for grip (see
-# acmpc/main_acmpc_box_catch.py's _LOG_COST_LABELS and
-# DifferentiableBimanualMPC.forward's comment) -- labelled "compression"
-# here to match, so a W&B panel never reads "force" for a term that isn't one.
-_LOG_LABELS = {
-    "object": "object",
-    "grasp": "grasp",
-    "force": "compression",
-    "velocity": "velocity",
-    "smoothness": "smoothness",
-}
+COST_NAMES = ("object", "grasp", "compression", "velocity", "smoothness")
 _RESIDUAL_EPSILON = 1e-6
 
 
@@ -99,7 +85,7 @@ def build_mpc_weight_log(
     }
     absolute_relative_mean: list[float] = []
     for index, name in enumerate(COST_NAMES):
-        label = _LOG_LABELS[name]
+        label = name
         final_value = float(final_weights[name][0])
         prior_value = float(phase_prior[index])
         absolute_residual = final_value - prior_value
