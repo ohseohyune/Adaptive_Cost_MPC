@@ -5,6 +5,7 @@ Usage: python tests/acmpc_constraint_switch_test.py
 
 from __future__ import annotations
 
+import copy
 import sys
 from pathlib import Path
 
@@ -75,6 +76,10 @@ def check_weight_parameterizations() -> None:
     exponential_weights = exponential(observation, phase)
     assert torch.all(exponential_weights > 0.0)
     assert torch.all(exponential_weights > bounded_weights)
+    assert torch.allclose(
+        exponential_weights,
+        expected * torch.exp(torch.tensor(0.65 * 2.0)),
+    )
 
     clipped = AdaptiveCostActor(
         2, 16, 0.65, weight_clip_min=None, weight_clip_max=10.0
@@ -129,7 +134,68 @@ def check_optional_update_guards() -> None:
     assert np.isfinite(learner.return_mean) and learner.return_variance > 0.0
 
 
+def _nested_equal(left, right) -> bool:
+    if isinstance(left, torch.Tensor):
+        return isinstance(right, torch.Tensor) and torch.equal(left, right)
+    if isinstance(left, dict):
+        return left.keys() == right.keys() and all(
+            _nested_equal(left[key], right[key]) for key in left
+        )
+    if isinstance(left, (list, tuple)):
+        return type(left) is type(right) and len(left) == len(right) and all(
+            _nested_equal(a, b) for a, b in zip(left, right)
+        )
+    return left == right
+
+
+def check_frozen_policy_is_read_only() -> None:
+    config = OnlineActorCriticConfig(
+        hidden_dim=24,
+        device="cpu",
+        seed=9,
+        minibatch_size=4,
+        minimum_online_rollout=4,
+        normalize_returns=True,
+    )
+    learner = OnlineActorCriticACMPC(
+        DifferentiableMPCConfig(horizon=3, velocity_limit=0.2), config
+    )
+    rollout = _rollout(learner, seed=9)
+    learner.update(rollout, online=True)
+    actor_before = copy.deepcopy(learner.actor.state_dict())
+    critic_before = copy.deepcopy(learner.critic.state_dict())
+    actor_optimizer_before = copy.deepcopy(learner.actor_optimizer.state_dict())
+    critic_optimizer_before = copy.deepcopy(learner.critic_optimizer.state_dict())
+    counters_before = (
+        learner.update_count,
+        learner.actor_parameter_path_length,
+        learner.return_mean,
+        learner.return_variance,
+        learner.return_count,
+        len(rollout),
+    )
+    transition = _transition(np.random.default_rng(99))
+    first = learner.act(**transition, training=False)
+    second = learner.act(**transition, training=False)
+    learner.predict_value(transition["observation"])
+    counters_after = (
+        learner.update_count,
+        learner.actor_parameter_path_length,
+        learner.return_mean,
+        learner.return_variance,
+        learner.return_count,
+        len(rollout),
+    )
+    assert np.array_equal(first.normalized_action, second.normalized_action)
+    assert _nested_equal(actor_before, learner.actor.state_dict())
+    assert _nested_equal(critic_before, learner.critic.state_dict())
+    assert _nested_equal(actor_optimizer_before, learner.actor_optimizer.state_dict())
+    assert _nested_equal(critic_optimizer_before, learner.critic_optimizer.state_dict())
+    assert counters_before == counters_after
+
+
 if __name__ == "__main__":
     check_weight_parameterizations()
     check_optional_update_guards()
+    check_frozen_policy_is_read_only()
     print("AC-MPC constraint switches: PASS")

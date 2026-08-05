@@ -1,0 +1,66 @@
+  test_residual_zero_weights_equal_phase_prior: PASS
+  test_evaluation_action_is_deterministic: PASS
+  test_actor_loss_decomposition_identity: PASS
+  test_historical_log_reconstruction_matches_reported_value: PASS
+AC-MPC residual-zero audits: PASS
+[start] D0 seed=7 learned episodes=100
+[start] D0 seed=7 zero episodes=100
+[start] D0 seed=17 learned episodes=100
+[start] D0 seed=17 zero episodes=100
+[done] D0 seed=17 zero elapsed=11.7m
+[start] D0 seed=27 learned episodes=100
+[done] D0 seed=7 zero elapsed=12.1m
+[start] D0 seed=27 zero episodes=100
+[done] D0 seed=17 learned elapsed=13.8m
+[start] D1 seed=7 learned episodes=100
+[done] D0 seed=7 learned elapsed=14.0m
+[start] D1 seed=7 zero episodes=100
+[done] D0 seed=27 zero elapsed=11.4m
+[start] D1 seed=17 learned episodes=100
+[done] D0 seed=27 learned elapsed=13.8m
+[start] D1 seed=17 zero episodes=100
+[done] D1 seed=7 learned elapsed=12.3m
+[start] D1 seed=27 learned episodes=100
+[done] D1 seed=7 zero elapsed=12.2m
+[start] D1 seed=27 zero episodes=100
+[done] D1 seed=17 learned elapsed=11.4m
+[start] D2 seed=7 learned episodes=100
+[done] D1 seed=27 zero elapsed=10.8m
+[start] D2 seed=7 zero episodes=100
+[done] D1 seed=17 zero elapsed=12.1m
+[start] D2 seed=17 learned episodes=100
+[done] D1 seed=27 learned elapsed=13.2m
+[start] D2 seed=17 zero episodes=100
+[done] D2 seed=17 learned elapsed=2.8m
+[start] D2 seed=27 learned episodes=100
+[done] D2 seed=7 learned elapsed=8.4m
+[start] D2 seed=27 zero episodes=100
+[done] D2 seed=7 zero elapsed=11.7m
+[start] D3 seed=7 learned episodes=100
+[done] D2 seed=17 zero elapsed=11.7m
+[start] D3 seed=7 zero episodes=100
+[done] D2 seed=27 learned elapsed=12.8m
+[start] D3 seed=17 learned episodes=100
+[done] D2 seed=27 zero elapsed=11.3m
+[start] D3 seed=17 zero episodes=100
+[done] D3 seed=17 learned elapsed=2.6m
+[start] D3 seed=27 learned episodes=100
+[done] D3 seed=7 learned elapsed=12.2m
+[start] D3 seed=27 zero episodes=100
+[done] D3 seed=7 zero elapsed=11.1m
+[start] M0 seed=7 learned episodes=100
+[done] D3 seed=17 zero elapsed=12.4m
+[start] M0 seed=7 zero episodes=100
+[done] D3 seed=27 learned elapsed=12.1m
+[start] M0 seed=17 learned episodes=100
+[done] D3 seed=27 zero elapsed=8.9m
+[start] M0 seed=17 zero episodes=100
+[done] M0 seed=7 learned elapsed=9.5m
+[start] M0 seed=27 learned episodes=100
+[done] M0 seed=17 learned elapsed=5.8m
+[start] M0 seed=27 zero episodes=100
+[done] M0 seed=7 zero elapsed=11.2m
+[done] M0 seed=27 learned elapsed=7.5m
+[done] M0 seed=17 zero elapsed=10.2m
+[done] M0 seed=27 zero elapsed=9.3m
+results: /home/seohy/colcon_ws/src/Adaptive_Cost_MPC/sweep_results/residual_zero_20260805

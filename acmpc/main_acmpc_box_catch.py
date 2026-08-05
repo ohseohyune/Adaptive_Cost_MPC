@@ -90,6 +90,10 @@ from box_squeeze.main_dynamic_box_squeeze import (
     _disable_duplicate_end_effector_collisions,
 )
 from robot.ffw_config import FFW_ARMS, FFW_GRIPPERS
+from acmpc.runtime_environment import (
+    validate_model_repository_state,
+    validate_runtime_environment,
+)
 
 
 SCENE = ROOT / "model/robotis_ffw/scene_ffw_sg2_fixed_base_box_dynamic_squeeze.xml"
@@ -266,6 +270,13 @@ class AcmpcBoxCatchConfig:
     # online_updates/actor_weight_change_l2 (genuine learning still happens,
     # just without destabilizing the hold).
     exploration_std: float = 0.03
+    # Forwarded to OnlineActorCriticConfig -- see the field comments there.
+    residual_zero: bool = False
+    log_command_delta: bool = False
+    log_post_step_kl: bool = False
+    # Forensic replay / debug only -- see acmpc/runtime_environment.py.
+    allow_noncanonical_mujoco: bool = False
+    allow_dirty_model: bool = False
     rollout_size: int = 16
     offline_training: bool = False
     maximum_online_actor_delta: Optional[float] = 0.02
@@ -640,6 +651,9 @@ class BoxCatchSummary:
     simulated_time_s: float
     first_contact_time_s: Optional[float]
     first_contact_peak_force_n: float
+    episode_maximum_contact_force_n: float
+    force_over_18n_fraction: float
+    force_over_36n_fraction: float
     bilateral_contact_time_s: Optional[float]
     hold_time_s: float
     minimum_endpoint_error_m: float
@@ -696,6 +710,8 @@ class BoxCatchSummary:
     # None; the removed-value fields quantify the clip's magnitude.
     weight_lower_bound_hit_fraction: float
     weight_upper_bound_hit_fraction: float
+    weight_lower_clip_count: int
+    weight_upper_clip_count: int
     mean_weight_clip_removed: float
     max_weight_clip_removed: float
     weight_statistics: dict
@@ -741,6 +757,16 @@ class BoxCatchSummary:
     actor_parameter_path_length: float
     actor_path_displacement_ratio: float
     mean_ppo_clip_fraction: float
+    mean_explained_variance: float
+    mean_actor_grad_norm: float
+    mean_critic_grad_norm: float
+    mean_advantage_mean: float
+    mean_advantage_std: float
+    mean_executed_ppo_epochs: float
+    online_delta_removed: float
+    cumulative_delta_removed: float
+    kl_projection_removed: float
+    ppo_update_diagnostics: tuple[dict, ...]
     raw_actor_parameter_deltas: tuple[float, ...]
     applied_actor_parameter_deltas: tuple[float, ...]
     approximate_kls: tuple[float, ...]
@@ -772,6 +798,10 @@ class BoxCatchSummary:
     fixture_release_right_force_n: float = float("nan")
     fixture_release_force_dwell_s: float = 0.0
     fixture_release_force_safety_factor: float = 0.0
+    # ||u_learned_mean - u_zero_residual||_2 over this episode's control
+    # steps. None unless config.log_command_delta is set.
+    mean_policy_command_delta: Optional[float] = None
+    max_policy_command_delta: Optional[float] = None
 
 
 @dataclass(frozen=True)
@@ -1206,9 +1236,14 @@ def _summarize_weight_samples(
                 "p99": float(np.percentile(values, 99)),
                 "maximum": float(np.max(values)),
                 "prior_ratio_mean": float(np.mean(ratios[:, :, index])),
+                "prior_ratio_median": float(np.median(ratios[:, :, index])),
+                "prior_ratio_p05": float(np.percentile(ratios[:, :, index], 5)),
+                "prior_ratio_p95": float(np.percentile(ratios[:, :, index], 95)),
                 "residual_mean": float(np.mean(residuals)),
+                "residual_median": float(np.median(residuals)),
                 "residual_p05": float(np.percentile(residuals, 5)),
                 "residual_p95": float(np.percentile(residuals, 95)),
+                "residual_absolute_median": float(np.median(np.abs(residuals))),
                 "maximum_absolute_residual": float(np.max(np.abs(residuals))),
                 "horizon_mean": tuple(
                     float(value) for value in np.mean(weights[:, :, index], axis=0)
@@ -1390,6 +1425,20 @@ def run_box_catch(
     target_override_fn: Optional[Callable[[dict], Optional[np.ndarray]]] = None,
 ) -> BoxCatchSummary:
     config = config or AcmpcBoxCatchConfig()
+    # First statement with any side effect: no model, no checkpoint, no
+    # rollout may exist before the MuJoCo build is confirmed canonical.
+    if config.allow_noncanonical_mujoco and config.online_learning:
+        raise RuntimeError(
+            "allow_noncanonical_mujoco is a forensic-replay escape hatch; "
+            "training must run in the canonical environment"
+        )
+    validate_runtime_environment(
+        context="box catch episode",
+        allow_noncanonical=config.allow_noncanonical_mujoco,
+    )
+    validate_model_repository_state(
+        context="box catch episode", allow_dirty_model=config.allow_dirty_model
+    )
     # A caller that tracks W&B across many episodes (e.g. the curriculum
     # loop) passes its own logger, already wandb.init'd once, and this
     # function must not create/finish a second run for it -- only a bare
@@ -1588,6 +1637,9 @@ def run_box_catch(
             log_std_max=config.log_std_max,
             actor_lr=config.actor_lr,
             critic_lr=config.critic_lr,
+            residual_zero=config.residual_zero,
+            log_command_delta=config.log_command_delta,
+            log_post_step_kl=config.log_post_step_kl,
         ),
     )
     if config.checkpoint_path and Path(config.checkpoint_path).exists():
@@ -1895,10 +1947,15 @@ def run_box_catch(
     }
     residual_samples: dict[str, list[float]] = {name: [] for name in COST_NAMES}
     actor_residual_samples: list[np.ndarray] = []
+    command_delta_samples: list[float] = []
     actor_output_variation_sum = 0.0
     actor_output_variation_count = 0
     previous_mean_weights: Optional[np.ndarray] = None
     previous_weights_phase: Optional[CatchControlPhase] = None
+    episode_maximum_contact_force_n = 0.0
+    force_sample_count = 0
+    force_over_18n_count = 0
+    force_over_36n_count = 0
 
     viewer = None
     if config.viewer:
@@ -1938,6 +1995,15 @@ def run_box_catch(
                 right_pad_geom_name="right_catch_pad",
             )
             impact = limiter.update(time_s, contact)
+            instantaneous_max_force = max(
+                contact.left.normal_force, contact.right.normal_force
+            )
+            episode_maximum_contact_force_n = max(
+                episode_maximum_contact_force_n, instantaneous_max_force
+            )
+            force_sample_count += 1
+            force_over_18n_count += int(instantaneous_max_force > 18.0)
+            force_over_36n_count += int(instantaneous_max_force > 36.0)
             if impact.first_contact_time_s is not None:
                 # contact_blend is used by the Cartesian impedance K ramp;
                 # geom_solref stays at the pre-contact mass-scaled value.
@@ -2968,6 +3034,10 @@ def run_box_catch(
                 actor_residual_samples.append(
                     np.abs(_weight_rows / _prior_row - 1.0).mean(axis=0)
                 )
+                if action.zero_residual_command_delta is not None:
+                    command_delta_samples.append(
+                        float(action.zero_residual_command_delta)
+                    )
                 _current_mean_weights = np.array(
                     [float(np.mean(action.weights[_name])) for _name in COST_NAMES]
                 )
@@ -3474,6 +3544,12 @@ def run_box_catch(
                 data.ctrl[gripper_ids[name]] = FFW_GRIPPERS[name].open_ctrl
 
             mujoco.mj_step(model, data)
+            if not (
+                np.isfinite(data.qpos).all()
+                and np.isfinite(data.qvel).all()
+                and np.isfinite(data.ctrl).all()
+            ):
+                raise FloatingPointError("MuJoCo state or control became NaN or Inf")
             if step_callback is not None:
                 step_callback(
                     {
@@ -3515,6 +3591,15 @@ def run_box_catch(
                         "position_remaining_ttc_valid": bool(_position_ttc_valid),
                         "pad_plane_x": float(_pad_plane_x),
                         "predictor_samples": int(predictor._samples),
+                        # Hold/command state, so a reproducibility audit can
+                        # diff two runs step-by-step at the exact quantities
+                        # that decide success (see
+                        # tests/acmpc_evaluation_reproducibility_test.py)
+                        # instead of only at the episode summary.
+                        "hold_timer": float(hold_timer),
+                        "strict_hold_timer": float(strict_hold_timer),
+                        "command_velocity": command_velocity.copy(),
+                        "failure_reason": failure_reason,
                     }
                 )
             if viewer is not None:
@@ -3568,7 +3653,14 @@ def run_box_catch(
         )
         rollout.clear()
 
-    if config.checkpoint_path:
+    # Evaluation must never write the artifact it is evaluating. An
+    # online_learning=False episode changes no parameter, so the rewrite was
+    # numerically harmless, but it did make a checkpoint's on-disk bytes
+    # depend on how many times it had been replayed (learning_config.seed is
+    # rewritten with the last episode's seed), which breaks "same checkpoint"
+    # as a comparable identity between an in-process evaluation and a
+    # cold-start replay of the same file.
+    if config.checkpoint_path and config.online_learning:
         learner.save(config.checkpoint_path)
     if config.log_path and rows:
         log_path = Path(config.log_path)
@@ -3613,6 +3705,13 @@ def run_box_catch(
         simulated_time_s=float(data.time),
         first_contact_time_s=limiter.first_contact_time_s,
         first_contact_peak_force_n=float(limiter.peak_first_contact_force),
+        episode_maximum_contact_force_n=float(episode_maximum_contact_force_n),
+        force_over_18n_fraction=(
+            float(force_over_18n_count / force_sample_count) if force_sample_count else 0.0
+        ),
+        force_over_36n_fraction=(
+            float(force_over_36n_count / force_sample_count) if force_sample_count else 0.0
+        ),
         bilateral_contact_time_s=bilateral_contact_time,
         hold_time_s=float(hold_timer),
         minimum_endpoint_error_m=float(minimum_endpoint_error),
@@ -3665,6 +3764,8 @@ def run_box_catch(
         weight_upper_bound_hit_fraction=(
             float(weight_upper_hit_samples / weight_total_samples) if weight_total_samples else 0.0
         ),
+        weight_lower_clip_count=weight_lower_hit_samples,
+        weight_upper_clip_count=weight_upper_hit_samples,
         mean_weight_clip_removed=(
             float(np.mean(weight_clip_removed_samples)) if weight_clip_removed_samples else 0.0
         ),
@@ -3674,6 +3775,12 @@ def run_box_catch(
         weight_statistics=_summarize_weight_samples(weight_samples_by_phase),
         mean_abs_actor_residual=(
             float(np.mean(actor_residual_samples)) if actor_residual_samples else 0.0
+        ),
+        mean_policy_command_delta=(
+            float(np.mean(command_delta_samples)) if command_delta_samples else None
+        ),
+        max_policy_command_delta=(
+            float(np.max(command_delta_samples)) if command_delta_samples else None
         ),
         mean_abs_actor_residual_per_cost=(
             tuple(float(v) for v in np.mean(actor_residual_samples, axis=0))
@@ -3717,18 +3824,100 @@ def run_box_catch(
             float(np.mean([u.actor_parameter_delta for u in updates])) if updates else 0.0
         ),
         cumulative_actor_parameter_delta=(
-            updates[-1].cumulative_actor_parameter_delta if updates else 0.0
+            learner._actor_delta(learner._reference_actor_state)
         ),
-        actor_parameter_path_length=(
-            updates[-1].actor_parameter_path_length
-            if updates
-            else learner.actor_parameter_path_length
-        ),
+        actor_parameter_path_length=learner.actor_parameter_path_length,
         actor_path_displacement_ratio=(
-            updates[-1].actor_path_displacement_ratio if updates else 0.0
+            learner.actor_parameter_path_length
+            / max(learner._actor_delta(learner._reference_actor_state), 1e-12)
         ),
         mean_ppo_clip_fraction=(
             float(np.mean([u.ppo_clip_fraction for u in updates])) if updates else 0.0
+        ),
+        mean_explained_variance=(
+            float(
+                np.mean(
+                    [
+                        u.explained_variance
+                        for u in updates
+                        if u.explained_variance is not None
+                        and np.isfinite(u.explained_variance)
+                    ]
+                )
+            )
+            if any(
+                u.explained_variance is not None
+                and np.isfinite(u.explained_variance)
+                for u in updates
+            )
+            else float("nan")
+        ),
+        mean_actor_grad_norm=(
+            float(np.mean([u.actor_grad_norm for u in updates])) if updates else 0.0
+        ),
+        mean_critic_grad_norm=(
+            float(np.mean([u.critic_grad_norm for u in updates])) if updates else 0.0
+        ),
+        mean_advantage_mean=(
+            float(np.mean([u.advantage_mean for u in updates])) if updates else 0.0
+        ),
+        mean_advantage_std=(
+            float(np.mean([u.advantage_std for u in updates])) if updates else 0.0
+        ),
+        mean_executed_ppo_epochs=(
+            float(np.mean([u.epochs for u in updates])) if updates else 0.0
+        ),
+        online_delta_removed=float(sum(u.online_delta_removed for u in updates)),
+        cumulative_delta_removed=float(
+            sum(u.cumulative_projection_removed_delta for u in updates)
+        ),
+        kl_projection_removed=float(sum(u.projection_removed_delta for u in updates)),
+        ppo_update_diagnostics=tuple(
+            {
+                "epochs": u.epochs,
+                "epochs_requested": u.epochs_requested,
+                "target_kl_stopped": u.target_kl_stopped,
+                # DEPRECATED NAME, kept for backward compatibility with every
+                # result.json written before the loss decomposition landed:
+                # this is the *total* actor loss (surrogate + entropy bonus),
+                # not the PPO surrogate. Read total_actor_loss /
+                # policy_surrogate_loss / entropy_bonus instead.
+                "policy_loss": u.actor_loss,
+                "total_actor_loss": u.actor_loss,
+                "policy_surrogate_loss": u.policy_surrogate_loss,
+                "entropy_bonus": u.entropy_bonus,
+                "entropy_coef": (
+                    u.minibatch_diagnostics[0]["entropy_coef"]
+                    if u.minibatch_diagnostics
+                    else None
+                ),
+                "minibatch_diagnostics": u.minibatch_diagnostics,
+                "value_loss": u.critic_loss,
+                # Post-step, full-batch KL (see _update's final_kl) -- not the
+                # pre-step per-minibatch value used for target-KL early stop,
+                # which is in minibatch_diagnostics.
+                "approximate_kl": u.approximate_kl,
+                "entropy": u.entropy,
+                "explained_variance": u.explained_variance,
+                "advantage_mean": u.advantage_mean,
+                "advantage_std": u.advantage_std,
+                "actor_grad_norm": u.actor_grad_norm,
+                "critic_grad_norm": u.critic_grad_norm,
+                "raw_actor_delta": u.raw_actor_parameter_delta,
+                "applied_actor_delta": u.actor_parameter_delta,
+                "applied_raw_ratio": (
+                    u.actor_parameter_delta / max(u.raw_actor_parameter_delta, 1e-12)
+                ),
+                "ppo_clip_fraction": u.ppo_clip_fraction,
+                "online_delta_clipped": u.online_delta_clipped,
+                "online_delta_removed": u.online_delta_removed,
+                "cumulative_delta_clipped": u.cumulative_delta_clipped,
+                "cumulative_delta_removed": u.cumulative_projection_removed_delta,
+                "kl_projection_count": u.kl_projection_count,
+                "kl_rollback_count": u.kl_rollback_count,
+                "kl_projection_removed": u.projection_removed_delta,
+            }
+            for u in updates
         ),
         raw_actor_parameter_deltas=tuple(u.raw_actor_parameter_delta for u in updates),
         applied_actor_parameter_deltas=tuple(u.actor_parameter_delta for u in updates),

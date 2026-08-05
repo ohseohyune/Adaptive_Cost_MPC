@@ -1,0 +1,4 @@
+episodes=100 successes=26 success_rate=0.260 safety_violations=0 stages_visited=('warmup', 'intermediate', 'full') final_stage=warmup
+  warmup: 1/34 (0.029), safety_violations=0
+  intermediate: 14/33 (0.424), safety_violations=0
+  full: 11/33 (0.333), safety_violations=0

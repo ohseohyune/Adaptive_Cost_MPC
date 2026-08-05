@@ -181,6 +181,12 @@ def build_ppo_update_log(summary: PPOUpdateSummary) -> dict[str, Any]:
         "train/ppo_clip_fraction": float(summary.ppo_clip_fraction),
         "train/advantage_std": float(summary.advantage_std),
         "train/actor_grad_norm": float(summary.actor_grad_norm),
+        "train/critic_grad_norm": float(summary.critic_grad_norm),
+        "train/advantage_mean": float(summary.advantage_mean),
+        "train/online_delta_removed": float(summary.online_delta_removed),
+        "train/cumulative_projection_removed_delta": float(
+            summary.cumulative_projection_removed_delta
+        ),
         "train/transitions": int(summary.transitions),
     }
 

@@ -1,0 +1,24 @@
+episodes 0-19: success_rate=0.800 mean_reward=-6108.38 mean_actor_loss=0.0124 mean_kl=0.0005 stage=full scheduler_success_rate=0.667
+episodes 20-39: success_rate=0.750 mean_reward=-2171.43 mean_actor_loss=0.0123 mean_kl=0.0006 stage=full scheduler_success_rate=0.667
+episodes 40-59: success_rate=0.900 mean_reward=-4527.49 mean_actor_loss=0.0123 mean_kl=0.0003 stage=full scheduler_success_rate=1.000
+episodes 60-79: success_rate=0.900 mean_reward=-1667.54 mean_actor_loss=0.0123 mean_kl=0.0004 stage=full scheduler_success_rate=0.833
+episodes 80-99: success_rate=0.950 mean_reward=-5152.33 mean_actor_loss=0.0122 mean_kl=0.0003 stage=intermediate scheduler_success_rate=1.000
+episodes 100-119: success_rate=0.800 mean_reward=-17375.40 mean_actor_loss=0.0123 mean_kl=0.0011 stage=full scheduler_success_rate=0.667
+episodes 120-139: success_rate=0.850 mean_reward=-5084.89 mean_actor_loss=0.0123 mean_kl=0.0001 stage=full scheduler_success_rate=0.750
+episodes 140-159: success_rate=0.650 mean_reward=-9235.12 mean_actor_loss=0.0123 mean_kl=0.0003 stage=full scheduler_success_rate=0.500
+episodes 160-179: success_rate=0.750 mean_reward=-1963.92 mean_actor_loss=0.0122 mean_kl=0.0004 stage=full scheduler_success_rate=0.833
+episodes 180-199: success_rate=0.800 mean_reward=-9764.93 mean_actor_loss=0.0122 mean_kl=0.0007 stage=full scheduler_success_rate=0.667
+episodes 200-219: success_rate=0.650 mean_reward=-10087.39 mean_actor_loss=0.0123 mean_kl=0.0005 stage=full scheduler_success_rate=0.000
+episodes 220-239: success_rate=0.800 mean_reward=-13610.84 mean_actor_loss=0.0122 mean_kl=0.0005 stage=full scheduler_success_rate=0.667
+episodes 240-259: success_rate=0.600 mean_reward=702.57 mean_actor_loss=0.0121 mean_kl=0.0001 stage=full scheduler_success_rate=0.000
+episodes 260-279: success_rate=0.700 mean_reward=-9441.63 mean_actor_loss=0.0121 mean_kl=0.0008 stage=full scheduler_success_rate=0.833
+episodes 280-299: success_rate=0.950 mean_reward=-4766.53 mean_actor_loss=0.0121 mean_kl=0.0001 stage=full scheduler_success_rate=1.000
+episodes 300-319: success_rate=0.800 mean_reward=-11366.62 mean_actor_loss=0.0121 mean_kl=0.0004 stage=full scheduler_success_rate=0.667
+episodes 320-339: success_rate=0.800 mean_reward=-4059.83 mean_actor_loss=0.0120 mean_kl=0.0005 stage=full scheduler_success_rate=0.667
+episodes 340-359: success_rate=0.950 mean_reward=-4558.90 mean_actor_loss=0.0120 mean_kl=0.0002 stage=full scheduler_success_rate=1.000
+episodes 360-379: success_rate=0.850 mean_reward=-5508.39 mean_actor_loss=0.0120 mean_kl=0.0003 stage=full scheduler_success_rate=0.833
+episodes 380-399: success_rate=0.800 mean_reward=-1719.41 mean_actor_loss=0.0120 mean_kl=0.0001 stage=full scheduler_success_rate=0.500
+episodes=400 successes=321 success_rate=0.802 safety_violations=2 stages_visited=('warmup', 'intermediate', 'full') final_stage=full
+  warmup: 12/12 (1.000), safety_violations=0
+  intermediate: 24/32 (0.750), safety_violations=0
+  full: 285/356 (0.801), safety_violations=2

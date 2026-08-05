@@ -1,0 +1,14 @@
+Traceback (most recent call last):
+  File "/home/seohy/colcon_ws/src/Adaptive_Cost_MPC/acmpc/run_fixed_baseline_eval.py", line 71, in <module>
+    main()
+  File "/home/seohy/colcon_ws/src/Adaptive_Cost_MPC/acmpc/run_fixed_baseline_eval.py", line 48, in main
+    run_curriculum_box_catch(
+  File "/home/seohy/colcon_ws/src/Adaptive_Cost_MPC/acmpc/main_acmpc_box_catch_curriculum.py", line 557, in run_curriculum_box_catch
+    summary = run_box_catch(
+  File "/home/seohy/colcon_ws/src/Adaptive_Cost_MPC/acmpc/main_acmpc_box_catch.py", line 1595, in run_box_catch
+    learner = OnlineActorCriticACMPC(
+  File "/home/seohy/colcon_ws/src/Adaptive_Cost_MPC/control/mpc/online_actor_critic.py", line 817, in __init__
+    self.actor = AdaptiveCostActor(
+  File "/home/seohy/colcon_ws/src/Adaptive_Cost_MPC/control/mpc/online_actor_critic.py", line 367, in __init__
+    raise ValueError("phase priors must be finite and positive")
+ValueError: phase priors must be finite and positive

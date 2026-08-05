@@ -246,6 +246,25 @@ class OnlineActorCriticConfig:
     n_phases: int = N_PHASES
     device: str = "auto"
     seed: int = 7
+    # Ablation switch: force the actor's cost-weight residual to exactly zero
+    # so the MPC runs on the engineered phase prior alone, while every other
+    # part of the pipeline (observation, phase logic, MPC horizon, reference,
+    # impedance, safety, termination) is untouched. The actor network and
+    # checkpoint are left intact -- only its output is bypassed at the single
+    # point where weights are handed to the MPC (see ``act``).
+    residual_zero: bool = False
+    # Recompute each minibatch's approximate KL *after* its optimizer step and
+    # record it alongside the pre-step value. Off by default: it costs one
+    # extra MPC-backed forward pass per minibatch. The KL that reaches
+    # PPOUpdateSummary.approximate_kl is, and always was, a post-step
+    # full-batch value (see _update's final_kl) -- this flag only adds the
+    # per-minibatch pre/post pair.
+    log_post_step_kl: bool = False
+    # When True, ``act`` additionally solves the MPC with the zero-residual
+    # (phase-prior) weights at the same state and reports the resulting
+    # command gap in ACMPCAction.zero_residual_command_delta. Costs one extra
+    # MPC solve per control step, so it is off by default.
+    log_command_delta: bool = False
 
 
 @dataclass
@@ -272,6 +291,11 @@ class ACMPCAction:
     hessian_condition_number: float
     hessian_min_eigenvalue: float
     linear_solve_residual: float
+    # ||u_mean - u_zero||_2: how far this action's MPC velocity command sits
+    # from the command the same state would have produced with a zero actor
+    # residual (phase prior only). None unless config.log_command_delta is
+    # set; exactly 0.0 when config.residual_zero is set.
+    zero_residual_command_delta: Optional[float] = None
 
 
 class AdaptiveCostActor(nn.Module):
@@ -871,6 +895,13 @@ class OnlineActorCriticACMPC:
 
         with torch.no_grad():
             weights, preclip_weights = self.actor.forward_with_preclip(obs, prior_row)
+            zero_weights = prior_row.unsqueeze(1).expand_as(weights).contiguous()
+            if self.config.residual_zero:
+                # Bypass the residual at the one point where weights reach the
+                # MPC. No clamp: the engineered prior must survive bit-exact
+                # (see the residual_zero unit test's 1e-8 tolerance).
+                weights = zero_weights
+                preclip_weights = zero_weights
             self.mpc.collect_numerics = True
             try:
                 mean_velocity, _ = self.mpc(
@@ -883,6 +914,21 @@ class OnlineActorCriticACMPC:
                 )
             finally:
                 self.mpc.collect_numerics = False
+            command_delta: Optional[float] = None
+            if self.config.residual_zero:
+                command_delta = 0.0
+            elif self.config.log_command_delta:
+                zero_velocity, _ = self.mpc(
+                    ee_positions=state,
+                    object_positions=obj,
+                    object_velocities=obj_vel,
+                    relative_reference=rel,
+                    weights=zero_weights,
+                    previous_velocity=previous,
+                )
+                command_delta = float(
+                    torch.linalg.norm(mean_velocity - zero_velocity).cpu()
+                )
             value = self._denormalize_value(self.critic(obs))
             normalized_mean = mean_velocity / self.mpc_config.velocity_limit
             log_std = torch.clamp(self.actor.log_std, self.config.log_std_min, self.config.log_std_max)
@@ -912,6 +958,7 @@ class OnlineActorCriticACMPC:
             hessian_condition_number=self.mpc.last_condition_number,
             hessian_min_eigenvalue=self.mpc.last_min_eigenvalue,
             linear_solve_residual=self.mpc.last_solve_residual,
+            zero_residual_command_delta=command_delta,
         )
 
     def predict_value(self, observation: np.ndarray) -> float:
@@ -946,6 +993,7 @@ class OnlineActorCriticACMPC:
         # Old (pre-update) critic predictions vs. GAE returns -- the
         # standard PPO diagnostic; no extra critic forward pass.
         update_explained_variance = explained_variance(returns, np.asarray(rollout.values))
+        advantage_mean = float(advantages.mean()) if transitions else 0.0
         advantage_std = float(advantages.std()) if transitions > 1 else 0.0
         if transitions > 1:
             advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
@@ -979,7 +1027,9 @@ class OnlineActorCriticACMPC:
         critic_losses: list[float] = []
         entropies: list[float] = []
         actor_grad_norms: list[float] = []
+        critic_grad_norms: list[float] = []
         clip_fractions: list[float] = []
+        minibatch_records: list[dict[str, object]] = []
         stop_for_kl = False
 
         for _ in range(epochs):
@@ -1021,8 +1071,14 @@ class OnlineActorCriticACMPC:
                         )
                     )
                 entropy = distribution.entropy().sum(dim=-1).mean()
-                actor_loss = -policy_objective.mean()
-                actor_loss = actor_loss - self.config.entropy_coef * entropy
+                # Kept as three named terms: the value historically logged as
+                # "actor_loss"/"policy_loss" is the *total*, and with
+                # entropy_coef=1e-3 against an entropy near -12.4 the entropy
+                # bonus alone accounts for ~0.0124 of it -- i.e. the whole
+                # logged magnitude. See the loss-decomposition unit test.
+                policy_surrogate_loss = -policy_objective.mean()
+                entropy_bonus = -self.config.entropy_coef * entropy
+                actor_loss = policy_surrogate_loss + entropy_bonus
 
                 self.actor_optimizer.zero_grad(set_to_none=True)
                 actor_loss.backward()
@@ -1040,14 +1096,36 @@ class OnlineActorCriticACMPC:
                 )
                 self.critic_optimizer.zero_grad(set_to_none=True)
                 critic_loss.backward()
-                torch.nn.utils.clip_grad_norm_(
+                critic_grad_norm = torch.nn.utils.clip_grad_norm_(
                     self.critic.parameters(), self.config.max_grad_norm
                 )
+                critic_grad_norms.append(float(critic_grad_norm))
                 self.critic_optimizer.step()
 
                 actor_losses.append(float(actor_loss.detach().cpu()))
                 critic_losses.append(float(critic_loss.detach().cpu()))
                 entropies.append(float(entropy.detach().cpu()))
+                minibatch_records.append(
+                    {
+                        "executed_ppo_epoch": epochs_completed,
+                        "minibatch_index": len(minibatch_records),
+                        "policy_surrogate_loss": float(
+                            policy_surrogate_loss.detach().cpu()
+                        ),
+                        "entropy_bonus": float(entropy_bonus.detach().cpu()),
+                        "total_actor_loss": float(actor_loss.detach().cpu()),
+                        "entropy": float(entropy.detach().cpu()),
+                        "entropy_coef": float(self.config.entropy_coef),
+                        "pre_step_approximate_kl": float(approximate_kl.detach().cpu()),
+                        "clip_fraction": clip_fractions[-1],
+                        "actor_gradient_norm": float(grad_norm),
+                        "post_step_approximate_kl": (
+                            self._minibatch_kl(mini)
+                            if self.config.log_post_step_kl
+                            else None
+                        ),
+                    }
+                )
             epochs_completed += 1
             if stop_for_kl:
                 break
@@ -1065,6 +1143,7 @@ class OnlineActorCriticACMPC:
                 for parameter, previous in zip(self.actor.parameters(), actor_before):
                     parameter.copy_(previous + scale * (parameter - previous))
             actor_delta = self._actor_delta(actor_before)
+        online_delta_removed = max(0.0, raw_actor_delta - actor_delta)
 
         pre_projection_kl = self._policy_kl(batch)
         final_kl = pre_projection_kl
@@ -1100,10 +1179,14 @@ class OnlineActorCriticACMPC:
         projection_removed_delta = max(0.0, delta_before_projection - actor_delta)
 
         cumulative_delta_clipped = False
+        cumulative_projection_removed_delta = 0.0
         if online and self.config.maximum_cumulative_actor_delta is not None:
             cumulative_delta = self._actor_delta(self._reference_actor_state)
             if cumulative_delta > self.config.maximum_cumulative_actor_delta:
                 cumulative_delta_clipped = True
+                cumulative_projection_removed_delta = (
+                    cumulative_delta - self.config.maximum_cumulative_actor_delta
+                )
                 scale = self.config.maximum_cumulative_actor_delta / max(cumulative_delta, 1e-12)
                 with torch.no_grad():
                     for parameter, reference in zip(
@@ -1125,6 +1208,17 @@ class OnlineActorCriticACMPC:
             actor_loss=float(np.mean(actor_losses)) if actor_losses else 0.0,
             critic_loss=float(np.mean(critic_losses)) if critic_losses else 0.0,
             entropy=float(np.mean(entropies)) if entropies else 0.0,
+            minibatch_diagnostics=tuple(minibatch_records),
+            policy_surrogate_loss=(
+                float(np.mean([r["policy_surrogate_loss"] for r in minibatch_records]))
+                if minibatch_records
+                else 0.0
+            ),
+            entropy_bonus=(
+                float(np.mean([r["entropy_bonus"] for r in minibatch_records]))
+                if minibatch_records
+                else 0.0
+            ),
             approximate_kl=final_kl,
             actor_parameter_delta=actor_delta,
             explained_variance=update_explained_variance,
@@ -1145,6 +1239,12 @@ class OnlineActorCriticACMPC:
             actor_parameter_path_length=self.actor_parameter_path_length,
             actor_path_displacement_ratio=path_ratio,
             ppo_clip_fraction=float(np.mean(clip_fractions)) if clip_fractions else 0.0,
+            advantage_mean=advantage_mean,
+            critic_grad_norm=(
+                float(np.mean(critic_grad_norms)) if critic_grad_norms else 0.0
+            ),
+            online_delta_removed=online_delta_removed,
+            cumulative_projection_removed_delta=cumulative_projection_removed_delta,
         )
 
     def _distribution(
@@ -1169,6 +1269,10 @@ class OnlineActorCriticACMPC:
         new_log_probability = distribution.log_prob(mini.actions).sum(dim=-1)
         return distribution, new_log_probability
 
+    def _minibatch_kl(self, mini: _MPCBatch) -> float:
+        """Post-optimizer-step KL on one minibatch's own observations/actions."""
+        return self._policy_kl(mini)
+
     def _policy_kl(self, batch: _MPCBatch) -> float:
         with torch.no_grad():
             _, new_log_probability = self._distribution(batch)
@@ -1187,6 +1291,8 @@ class OnlineActorCriticACMPC:
     def _assert_finite_actor(self) -> None:
         if not all(torch.isfinite(parameter).all() for parameter in self.actor.parameters()):
             raise FloatingPointError("Cost Predictor parameters became NaN or Inf")
+        if not all(torch.isfinite(parameter).all() for parameter in self.critic.parameters()):
+            raise FloatingPointError("Critic parameters became NaN or Inf")
 
     def _denormalize_value(self, value: torch.Tensor) -> torch.Tensor:
         if not self.config.normalize_returns:

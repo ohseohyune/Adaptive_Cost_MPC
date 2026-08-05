@@ -64,6 +64,17 @@ class PPOUpdateSummary:
     actor_parameter_path_length: float = 0.0
     actor_path_displacement_ratio: float = 0.0
     ppo_clip_fraction: float = 0.0
+    advantage_mean: float = 0.0
+    critic_grad_norm: float = 0.0
+    online_delta_removed: float = 0.0
+    cumulative_projection_removed_delta: float = 0.0
+    # Per-minibatch loss decomposition and KL pair. ``actor_loss`` above is
+    # the *total* (surrogate + entropy bonus); these separate the terms so a
+    # reader never has to reconstruct the surrogate arithmetically. Empty for
+    # callers that do not record it.
+    minibatch_diagnostics: tuple[dict, ...] = ()
+    policy_surrogate_loss: float = 0.0
+    entropy_bonus: float = 0.0
 
 
 def generalized_advantage_estimate(

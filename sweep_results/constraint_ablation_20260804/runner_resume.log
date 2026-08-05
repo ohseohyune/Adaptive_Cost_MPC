@@ -1,0 +1,29 @@
+AC-MPC constraint switches: PASS
+[skip] pilot D0 seed=7
+[skip] pilot D0 seed=17
+[skip] pilot D0 seed=27
+[start] pilot D1 seed=7 episodes=400
+[skip] pilot D1 seed=17
+[start] pilot D1 seed=27 episodes=400
+[start] pilot D2 seed=7 episodes=400
+[done] pilot D1 seed=27 elapsed=89.4m log=sweep_results/constraint_ablation_20260804/pilot/D1/seed_27/stdout.log
+[start] pilot D2 seed=17 episodes=400
+[done] pilot D2 seed=7 elapsed=91.5m log=sweep_results/constraint_ablation_20260804/pilot/D2/seed_7/stdout.log
+[start] pilot D2 seed=27 episodes=400
+[done] pilot D1 seed=7 elapsed=92.6m log=sweep_results/constraint_ablation_20260804/pilot/D1/seed_7/stdout.log
+[start] pilot D3 seed=7 episodes=400
+[done] pilot D2 seed=17 elapsed=45.2m log=sweep_results/constraint_ablation_20260804/pilot/D2/seed_17/stdout.log
+[start] pilot D3 seed=17 episodes=400
+[done] pilot D2 seed=27 elapsed=76.6m log=sweep_results/constraint_ablation_20260804/pilot/D2/seed_27/stdout.log
+[start] pilot D3 seed=27 episodes=400
+[done] pilot D3 seed=7 elapsed=77.2m log=sweep_results/constraint_ablation_20260804/pilot/D3/seed_7/stdout.log
+[start] pilot M0 seed=7 episodes=400
+[done] pilot D3 seed=17 elapsed=49.0m log=sweep_results/constraint_ablation_20260804/pilot/D3/seed_17/stdout.log
+[start] pilot M0 seed=17 episodes=400
+[done] pilot D3 seed=27 elapsed=69.8m log=sweep_results/constraint_ablation_20260804/pilot/D3/seed_27/stdout.log
+[start] pilot M0 seed=27 episodes=400
+[done] pilot M0 seed=7 elapsed=69.7m log=sweep_results/constraint_ablation_20260804/pilot/M0/seed_7/stdout.log
+[done] pilot M0 seed=17 elapsed=65.8m log=sweep_results/constraint_ablation_20260804/pilot/M0/seed_17/stdout.log
+[done] pilot M0 seed=27 elapsed=48.2m log=sweep_results/constraint_ablation_20260804/pilot/M0/seed_27/stdout.log
+analysis written to sweep_results/constraint_ablation_20260804
+results: sweep_results/constraint_ablation_20260804

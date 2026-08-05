@@ -24,7 +24,7 @@ import sys
 from collections import Counter
 from dataclasses import asdict, dataclass, replace
 from pathlib import Path
-from typing import Optional, Union
+from typing import Callable, Optional, Union
 
 import numpy as np
 
@@ -40,6 +40,12 @@ from control.squeeze import (
     DynamicSideSqueezeConfig,
     resolve_ballistic_launch_position,
     resolve_ballistic_launch_velocity,
+)
+from acmpc.runtime_environment import (
+    environment_stamp,
+    log_runtime_environment,
+    validate_model_repository_state,
+    validate_runtime_environment,
 )
 from acmpc.main_acmpc_box_catch import (
     AcmpcBoxCatchConfig,
@@ -103,6 +109,11 @@ class CurriculumBoxCatchConfig:
     entropy_coef: float = 1e-3
     log_std_min: float = -5.0
     log_std_max: float = -1.8
+    # Forwarded to each episode's AcmpcBoxCatchConfig -- see
+    # OnlineActorCriticConfig for what each one does.
+    residual_zero: bool = False
+    log_command_delta: bool = False
+    log_post_step_kl: bool = False
     # False (default): each episode's rollout buffer is created and flushed
     # within that one run_box_catch call, as before -- every PPO update sees
     # transitions from a single domain sample (one box mass/size/speed).
@@ -117,6 +128,12 @@ class CurriculumBoxCatchConfig:
     evaluation_every: int = 0
     evaluation_episodes: int = 50
     evaluation_seed: int = 100_000
+    # Debug run against an uncommitted physics model. Never legal for
+    # training; canonical evaluations must leave it False.
+    allow_dirty_model: bool = False
+    # Forensic replay of a pre-pin result only (see runtime_environment.py).
+    # Never legal for training; canonical evaluations must leave it False.
+    allow_noncanonical_mujoco: bool = False
     log_path: Optional[str] = str(
         ROOT / "sweep_results" / "acmpc_box_catch_curriculum.json"
     )
@@ -152,6 +169,10 @@ class CurriculumBoxCatchEpisode:
     strict_success: bool
     hold_time_s: float
     final_box_speed_mps: float
+    first_contact_peak_force_n: float
+    episode_maximum_contact_force_n: float
+    force_over_18n_fraction: float
+    force_over_36n_fraction: float
     online_updates: int
     actor_weight_change_l2: float
     failure_reason: str
@@ -173,6 +194,10 @@ class CurriculumBoxCatchEpisode:
     critic_loss: float
     entropy: float
     approximate_kl: float
+    effective_action_std: float
+    raw_log_std_mean: float
+    mean_abs_actor_residual: float
+    mean_abs_actor_residual_per_cost: tuple[float, ...]
     # Phase-structure/cost-contribution diagnostics (see BoxCatchSummary in
     # main_acmpc_box_catch.py) -- rolled up per-episode here so a curriculum
     # run's JSON log can be aggregated across episodes (e.g. mean dwell time
@@ -191,6 +216,8 @@ class CurriculumBoxCatchEpisode:
     maximum_linear_solve_residual: float
     weight_lower_bound_hit_fraction: float
     weight_upper_bound_hit_fraction: float
+    weight_lower_clip_count: int
+    weight_upper_clip_count: int
     mean_actor_output_variation: float
     mean_weight_clip_removed: float
     max_weight_clip_removed: float
@@ -206,6 +233,16 @@ class CurriculumBoxCatchEpisode:
     actor_parameter_path_length: float
     actor_path_displacement_ratio: float
     mean_ppo_clip_fraction: float
+    mean_explained_variance: float
+    mean_actor_grad_norm: float
+    mean_critic_grad_norm: float
+    mean_advantage_mean: float
+    mean_advantage_std: float
+    mean_executed_ppo_epochs: float
+    online_delta_removed: float
+    cumulative_delta_removed: float
+    kl_projection_removed: float
+    ppo_update_diagnostics: tuple[dict, ...]
     raw_actor_parameter_deltas: tuple[float, ...]
     applied_actor_parameter_deltas: tuple[float, ...]
     approximate_kls: tuple[float, ...]
@@ -217,6 +254,9 @@ class CurriculumBoxCatchEpisode:
     resample_count: int = 0
     resample_exhausted: bool = False
     difficulty_score: float = 0.0
+    # None unless the run set log_command_delta (see AcmpcBoxCatchConfig).
+    mean_policy_command_delta: Optional[float] = None
+    max_policy_command_delta: Optional[float] = None
 
 
 @dataclass(frozen=True)
@@ -236,6 +276,15 @@ class EvaluationCheckpoint:
     impact_safe_rate: float
     stable_hold_rate: float
     mean_hold_time_s: float
+    bilateral_contact_rate: float
+    box_drop_rate: float
+    workspace_failure_rate: float
+    mean_first_contact_peak_force_n: float
+    mean_episode_maximum_contact_force_n: float
+    force_over_18n_episode_rate: float
+    force_over_36n_episode_rate: float
+    mean_force_over_18n_step_fraction: float
+    mean_force_over_36n_step_fraction: float
 
 
 @dataclass(frozen=True)
@@ -272,6 +321,33 @@ def _experiment_config(config: CurriculumBoxCatchConfig) -> dict:
         "evaluation_episodes": config.evaluation_episodes,
         "evaluation_seed": config.evaluation_seed,
     }
+
+
+def evaluation_replay_config(
+    config: CurriculumBoxCatchConfig, *, log_path: Optional[str] = None
+) -> CurriculumBoxCatchConfig:
+    """The single definition of what an evaluation run is.
+
+    Both evaluation paths go through this: the in-process checkpoint
+    evaluation (``evaluation_every``) and the cold-start replay launched as
+    its own process (``--evaluation-replay``). Keeping one constructor is the
+    only way the two paths cannot silently drift apart in which switches they
+    do and do not carry over from the training config.
+    """
+
+    return replace(
+        config,
+        episodes=config.evaluation_episodes,
+        random_seed=config.evaluation_seed,
+        online_learning=False,
+        load_checkpoint=True,
+        curriculum_mode="balanced",
+        log_path=log_path,
+        progress_every=config.evaluation_episodes + 1,
+        use_wandb=False,
+        live_state_path=None,
+        evaluation_every=0,
+    )
 
 
 def _is_safety_violation(
@@ -314,8 +390,35 @@ def run_curriculum_box_catch(
     config: Optional[CurriculumBoxCatchConfig] = None,
     *,
     curriculum: Optional[Union[CurriculumScheduler, AdaptiveCurriculumScheduler]] = None,
+    # Read-only per-substep hook, forwarded verbatim to run_box_catch's own
+    # step_callback (see its comment there). Used by the reproducibility
+    # audit to diff two runs step-by-step; None is a no-op for every other
+    # caller.
+    step_callback: Optional[Callable[[dict], None]] = None,
 ) -> CurriculumBoxCatchSummary:
     config = config or CurriculumBoxCatchConfig()
+    # Before the scheduler, the checkpoint, the model, or any episode: a wrong
+    # MuJoCo build silently produces incomparable numbers (see
+    # runtime_environment.py), so it must stop the run here, not after an
+    # hour of rollouts.
+    if config.allow_noncanonical_mujoco and config.online_learning:
+        raise RuntimeError(
+            "allow_noncanonical_mujoco is a forensic-replay escape hatch; "
+            "training must run in the canonical environment"
+        )
+    if config.allow_dirty_model and config.online_learning:
+        raise RuntimeError(
+            "allow_dirty_model is a debug escape hatch; training must run "
+            "against a git-pinned physics model"
+        )
+    _versions = validate_runtime_environment(
+        context="curriculum box-catch",
+        allow_noncanonical=config.allow_noncanonical_mujoco,
+    )
+    validate_model_repository_state(
+        context="curriculum box-catch", allow_dirty_model=config.allow_dirty_model
+    )
+    log_runtime_environment("curriculum box-catch", _versions)
     if config.episodes <= 0:
         raise ValueError("episodes must be positive")
     if config.evaluation_every < 0:
@@ -481,6 +584,11 @@ def run_curriculum_box_catch(
                 entropy_coef=config.entropy_coef,
                 log_std_min=config.log_std_min,
                 log_std_max=config.log_std_max,
+                allow_noncanonical_mujoco=config.allow_noncanonical_mujoco,
+                allow_dirty_model=config.allow_dirty_model,
+                residual_zero=config.residual_zero,
+                log_command_delta=config.log_command_delta,
+                log_post_step_kl=config.log_post_step_kl,
                 wandb_log_interval=config.wandb_log_interval,
                 live_state_path=config.live_state_path,
                 **({"phase_priors": config.phase_priors} if config.phase_priors else {}),
@@ -498,6 +606,7 @@ def run_curriculum_box_catch(
                         wandb_logger=wandb_logger,
                         global_step_start=global_step,
                         rollout_buffer=shared_rollout_buffer,
+                        step_callback=step_callback,
                     )
                 except Exception:
                     empty_funnel = EpisodeFunnel(
@@ -519,6 +628,7 @@ def run_curriculum_box_catch(
                     wandb_logger=wandb_logger,
                     global_step_start=global_step,
                     rollout_buffer=shared_rollout_buffer,
+                    step_callback=step_callback,
                 )
             # control_step_count (not total_transitions, which stays 0 for a
             # fixed-baseline/online_learning=False run) keeps global_step
@@ -556,6 +666,12 @@ def run_curriculum_box_catch(
                     strict_success=summary.strict_success,
                     hold_time_s=summary.hold_time_s,
                     final_box_speed_mps=summary.final_box_speed_mps,
+                    first_contact_peak_force_n=summary.first_contact_peak_force_n,
+                    episode_maximum_contact_force_n=(
+                        summary.episode_maximum_contact_force_n
+                    ),
+                    force_over_18n_fraction=summary.force_over_18n_fraction,
+                    force_over_36n_fraction=summary.force_over_36n_fraction,
                     online_updates=summary.online_updates,
                     actor_weight_change_l2=summary.actor_weight_change_l2,
                     failure_reason=summary.failure_reason,
@@ -572,6 +688,12 @@ def run_curriculum_box_catch(
                     critic_loss=summary.mean_critic_loss,
                     entropy=summary.mean_entropy,
                     approximate_kl=summary.mean_approximate_kl,
+                    effective_action_std=summary.effective_action_std,
+                    raw_log_std_mean=summary.raw_log_std_mean,
+                    mean_abs_actor_residual=summary.mean_abs_actor_residual,
+                    mean_abs_actor_residual_per_cost=(
+                        summary.mean_abs_actor_residual_per_cost
+                    ),
                     phase_transition_count=summary.phase_transition_count,
                     hold_to_capture_demotion_count=summary.hold_to_capture_demotion_count,
                     intercept_dwell_s=summary.intercept_dwell_s,
@@ -588,6 +710,8 @@ def run_curriculum_box_catch(
                     maximum_linear_solve_residual=summary.maximum_linear_solve_residual,
                     weight_lower_bound_hit_fraction=summary.weight_lower_bound_hit_fraction,
                     weight_upper_bound_hit_fraction=summary.weight_upper_bound_hit_fraction,
+                    weight_lower_clip_count=summary.weight_lower_clip_count,
+                    weight_upper_clip_count=summary.weight_upper_clip_count,
                     mean_actor_output_variation=summary.mean_actor_output_variation,
                     mean_weight_clip_removed=summary.mean_weight_clip_removed,
                     max_weight_clip_removed=summary.max_weight_clip_removed,
@@ -607,6 +731,16 @@ def run_curriculum_box_catch(
                     actor_parameter_path_length=summary.actor_parameter_path_length,
                     actor_path_displacement_ratio=summary.actor_path_displacement_ratio,
                     mean_ppo_clip_fraction=summary.mean_ppo_clip_fraction,
+                    mean_explained_variance=summary.mean_explained_variance,
+                    mean_actor_grad_norm=summary.mean_actor_grad_norm,
+                    mean_critic_grad_norm=summary.mean_critic_grad_norm,
+                    mean_advantage_mean=summary.mean_advantage_mean,
+                    mean_advantage_std=summary.mean_advantage_std,
+                    mean_executed_ppo_epochs=summary.mean_executed_ppo_epochs,
+                    online_delta_removed=summary.online_delta_removed,
+                    cumulative_delta_removed=summary.cumulative_delta_removed,
+                    kl_projection_removed=summary.kl_projection_removed,
+                    ppo_update_diagnostics=summary.ppo_update_diagnostics,
                     raw_actor_parameter_deltas=summary.raw_actor_parameter_deltas,
                     applied_actor_parameter_deltas=(
                         summary.applied_actor_parameter_deltas
@@ -617,27 +751,15 @@ def run_curriculum_box_catch(
                     resample_count=resample_count,
                     resample_exhausted=resample_exhausted,
                     difficulty_score=difficulty_score,
+                    mean_policy_command_delta=summary.mean_policy_command_delta,
+                    max_policy_command_delta=summary.max_policy_command_delta,
                 )
             )
 
             if config.evaluation_every > 0 and (episode_index + 1) % config.evaluation_every == 0:
                 if not checkpoint_path:
                     raise ValueError("frozen evaluation requires checkpoint_path")
-                evaluation = run_curriculum_box_catch(
-                    replace(
-                        config,
-                        episodes=config.evaluation_episodes,
-                        random_seed=config.evaluation_seed,
-                        online_learning=False,
-                        load_checkpoint=True,
-                        curriculum_mode="balanced",
-                        log_path=None,
-                        progress_every=config.evaluation_episodes + 1,
-                        use_wandb=False,
-                        live_state_path=None,
-                        evaluation_every=0,
-                    )
-                )
+                evaluation = run_curriculum_box_catch(evaluation_replay_config(config))
                 eval_episodes = evaluation.episode_summaries
                 eval_summary = EvaluationCheckpoint(
                     training_episode=episode_index + 1,
@@ -655,6 +777,64 @@ def run_curriculum_box_catch(
                     ),
                     mean_hold_time_s=(
                         float(np.mean([e.hold_time_s for e in eval_episodes]))
+                        if eval_episodes
+                        else 0.0
+                    ),
+                    bilateral_contact_rate=(
+                        sum(e.bilateral_contact_achieved for e in eval_episodes)
+                        / evaluation.episodes
+                        if evaluation.episodes
+                        else 0.0
+                    ),
+                    box_drop_rate=(
+                        sum(
+                            e.failure_category
+                            in {"insufficient grip", "contact loss", "unstable box motion"}
+                            for e in eval_episodes
+                        )
+                        / evaluation.episodes
+                        if evaluation.episodes
+                        else 0.0
+                    ),
+                    workspace_failure_rate=(
+                        sum(e.failure_category == "interception miss" for e in eval_episodes)
+                        / evaluation.episodes
+                        if evaluation.episodes
+                        else 0.0
+                    ),
+                    mean_first_contact_peak_force_n=(
+                        float(np.mean([e.first_contact_peak_force_n for e in eval_episodes]))
+                        if eval_episodes
+                        else 0.0
+                    ),
+                    mean_episode_maximum_contact_force_n=(
+                        float(
+                            np.mean(
+                                [e.episode_maximum_contact_force_n for e in eval_episodes]
+                            )
+                        )
+                        if eval_episodes
+                        else 0.0
+                    ),
+                    force_over_18n_episode_rate=(
+                        sum(e.episode_maximum_contact_force_n > 18.0 for e in eval_episodes)
+                        / evaluation.episodes
+                        if evaluation.episodes
+                        else 0.0
+                    ),
+                    force_over_36n_episode_rate=(
+                        sum(e.episode_maximum_contact_force_n > 36.0 for e in eval_episodes)
+                        / evaluation.episodes
+                        if evaluation.episodes
+                        else 0.0
+                    ),
+                    mean_force_over_18n_step_fraction=(
+                        float(np.mean([e.force_over_18n_fraction for e in eval_episodes]))
+                        if eval_episodes
+                        else 0.0
+                    ),
+                    mean_force_over_36n_step_fraction=(
+                        float(np.mean([e.force_over_36n_fraction for e in eval_episodes]))
                         if eval_episodes
                         else 0.0
                     ),
@@ -783,6 +963,10 @@ def run_curriculum_box_catch(
                         json.dump(
                             {
                                 "experiment_config": _experiment_config(config),
+                                "environment": environment_stamp(
+                                    allow_noncanonical=config.allow_noncanonical_mujoco,
+                                    allow_dirty_model=config.allow_dirty_model,
+                                ),
                                 "episodes": len(episodes),
                                 "successes": sum(e.success for e in episodes),
                                 "success_rate": sum(e.success for e in episodes) / len(episodes),
@@ -838,6 +1022,10 @@ def run_curriculum_box_catch(
             json.dump(
                 {
                     "experiment_config": _experiment_config(config),
+                    "environment": environment_stamp(
+                        allow_noncanonical=config.allow_noncanonical_mujoco,
+                        allow_dirty_model=config.allow_dirty_model,
+                    ),
                     "episodes": result.episodes,
                     "successes": result.successes,
                     "success_rate": result.success_rate,
@@ -909,19 +1097,50 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--normalize-returns", action="store_true")
     parser.add_argument("--rollout-size", type=int, default=16)
     parser.add_argument("--entropy-coef", type=float, default=1e-3)
+    parser.add_argument("--no-online-learning", action="store_true")
+    parser.add_argument("--residual-zero", action="store_true")
+    parser.add_argument("--log-command-delta", action="store_true")
+    parser.add_argument("--log-post-step-kl", action="store_true")
     parser.add_argument("--log-std-min", type=float, default=-5.0)
     parser.add_argument("--log-std-max", type=float, default=-1.8)
     parser.add_argument("--accumulate-rollout-across-episodes", action="store_true")
     parser.add_argument("--evaluation-every", type=int, default=0)
     parser.add_argument("--evaluation-episodes", type=int, default=50)
     parser.add_argument("--evaluation-seed", type=int, default=100_000)
+    parser.add_argument(
+        "--allow-dirty-model",
+        action="store_true",
+        help=(
+            "debug run against an uncommitted physics model. Refused for "
+            "training; marks the output canonical_model=false."
+        ),
+    )
+    parser.add_argument(
+        "--allow-noncanonical-mujoco",
+        action="store_true",
+        help=(
+            "forensic replay of a result produced before the mujoco pin. "
+            "Refused for training; marks the output canonical_environment="
+            "false. Never use for a canonical evaluation."
+        ),
+    )
+    parser.add_argument(
+        "--evaluation-replay",
+        action="store_true",
+        help=(
+            "run exactly the frozen evaluation the training loop runs in "
+            "process (see evaluation_replay_config), driven by "
+            "--evaluation-episodes/--evaluation-seed, instead of a training "
+            "run. --episodes/--seed/--curriculum-mode/--no-online-learning "
+            "are ignored so a replay cannot drift from the in-process path."
+        ),
+    )
     return parser.parse_args()
 
 
 def main() -> None:
     args = _parse_args()
-    summary = run_curriculum_box_catch(
-        CurriculumBoxCatchConfig(
+    config = CurriculumBoxCatchConfig(
             episodes=args.episodes,
             random_seed=args.seed,
             device=args.device,
@@ -944,12 +1163,18 @@ def main() -> None:
             normalize_returns=args.normalize_returns,
             rollout_size=args.rollout_size,
             entropy_coef=args.entropy_coef,
+            online_learning=not args.no_online_learning,
+            residual_zero=args.residual_zero,
+            log_command_delta=args.log_command_delta,
+            log_post_step_kl=args.log_post_step_kl,
             log_std_min=args.log_std_min,
             log_std_max=args.log_std_max,
             accumulate_rollout_across_episodes=args.accumulate_rollout_across_episodes,
             evaluation_every=args.evaluation_every,
             evaluation_episodes=args.evaluation_episodes,
             evaluation_seed=args.evaluation_seed,
+            allow_noncanonical_mujoco=args.allow_noncanonical_mujoco,
+            allow_dirty_model=args.allow_dirty_model,
             progressive_decision_window=args.progressive_decision_window,
             progressive_minimum_anchor_episodes=args.progressive_minimum_anchor_episodes,
             progressive_transition_cooldown_episodes=args.progressive_transition_cooldown_episodes,
@@ -958,8 +1183,10 @@ def main() -> None:
             progressive_mixture_adjacent_probability=args.progressive_mixture_adjacent_probability,
             progressive_failure_replay_probability=args.progressive_failure_replay_probability,
             progressive_max_resamples=args.progressive_max_resamples,
-        )
     )
+    if args.evaluation_replay:
+        config = evaluation_replay_config(config, log_path=args.log)
+    summary = run_curriculum_box_catch(config)
     print(
         f"episodes={summary.episodes} successes={summary.successes} "
         f"success_rate={summary.success_rate:.3f} "
