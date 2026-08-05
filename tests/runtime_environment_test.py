@@ -42,6 +42,16 @@ REQUIRED_STAMP_FIELDS = (
     "canonical_environment",
     "scene_xml_sha256",
     "robot_xml_sha256",
+    "canonical_model",
+    "parent_repo_commit",
+    "parent_repo_branch",
+    "parent_repo_dirty",
+    "model_repo_commit",
+    "model_repo_branch",
+    "model_repo_dirty",
+    "model_is_submodule",
+    "submodule_pointer_commit",
+    "model_files_dirty",
 )
 
 
@@ -59,8 +69,9 @@ def _versions(package: str, native: str) -> dict:
 
 def test_a_canonical_environment_passes() -> None:
     print("Test A: canonical environment")
-    stamp = runtime.validate_runtime_environment(context="test A")
+    stamp = runtime.environment_stamp()
     assert stamp["canonical_environment"] is True, stamp
+    assert stamp["canonical_model"] is True, stamp
     assert stamp["mujoco_python_version"] == runtime.CANONICAL_MUJOCO_VERSION
     assert stamp["mujoco_native_version"] == runtime.CANONICAL_MUJOCO_VERSION
     for field in REQUIRED_STAMP_FIELDS:
@@ -172,6 +183,78 @@ def test_d_subprocess_guard() -> None:
     print(f"  child exit={completed.returncode}, no episode ran, interpreter reported")
 
 
+def test_g_model_is_git_pinned() -> None:
+    """Tests B/C/D of the model-pinning criteria: tracked, matching, pointed at."""
+
+    print("Test G: physics model is git-pinned")
+    state = runtime.git_state()
+    assert runtime.validate_model_repository_state(context="test G") is True
+    assert state["model_is_submodule"] is True
+    assert state["submodule_pointer_commit"] == state["model_repo_commit"], state
+    assert state["model_files_dirty"] is False, state
+    for path in runtime._RELEVANT_MODEL_PATHS:
+        full = runtime.SCENE_XML.parent / Path(path).name
+        relative = full.relative_to(runtime.SCENE_XML.parent.parent).as_posix()
+        root = runtime.SCENE_XML.parent.parent
+        assert runtime._git(root, "ls-files", "--", relative), f"{relative} untracked"
+        assert runtime._git(root, "hash-object", str(full)) == runtime._git(
+            root, "rev-parse", f"HEAD:{relative}"
+        ), f"{relative} differs from its committed blob"
+    print(
+        f"  submodule {state['model_repo_commit'][:12]} == pointer "
+        f"{state['submodule_pointer_commit'][:12]}, both XMLs match their blobs"
+    )
+
+
+def test_h_dirty_model_detection() -> None:
+    print("Test H: a modified model stops the run before any episode")
+    root = runtime.SCENE_XML.parent.parent
+    original_git = runtime._git
+    before = runtime._digest(runtime.ROBOT_XML)
+
+    def _one_byte_different(repository, *arguments):
+        # Simulate "the working tree XML is not the committed blob" without
+        # writing to the user's working tree at all.
+        if arguments[:1] == ("hash-object",) and str(runtime.ROBOT_XML) in arguments[-1]:
+            return "0" * 40
+        return original_git(repository, *arguments)
+
+    runtime._git = _one_byte_different
+    try:
+        runtime.validate_model_repository_state(context="test H")
+    except RuntimeError as error:
+        message = str(error)
+        assert "differs from its committed blob" in message, message
+        assert "sha256=" in message, message
+        print("  RuntimeError raised, hash mismatch reported")
+    else:
+        raise AssertionError("dirty model was not refused")
+    finally:
+        runtime._git = original_git
+
+    # And through the entry point: zero episodes may run.
+    runtime._git = _one_byte_different
+    try:
+        _expect_refusal(
+            lambda: run_box_catch(
+                AcmpcBoxCatchConfig(
+                    seed=7,
+                    device="cpu",
+                    online_learning=False,
+                    checkpoint_path=str(CHECKPOINT),
+                )
+            ),
+            "run_box_catch",
+            ("differs from its committed blob",),
+        )
+    finally:
+        runtime._git = original_git
+
+    assert runtime._digest(runtime.ROBOT_XML) == before, "the test modified the XML"
+    assert runtime.validate_model_repository_state(context="test H restore") is True
+    print("  working tree untouched; validator passes again")
+
+
 def test_f_result_metadata() -> None:
     print("Test F: result.json metadata matches this interpreter")
     with tempfile.TemporaryDirectory() as directory:
@@ -201,8 +284,7 @@ def test_f_result_metadata() -> None:
         assert completed.returncode == 0, completed.stdout[-2000:] + completed.stderr[-2000:]
         assert "[runtime]" in completed.stdout, "no runtime line at process start"
         stored = json.loads(log.read_text())["environment"]
-    current = runtime.runtime_versions()
-    current["canonical_environment"] = True
+    current = runtime.environment_stamp()
     for field in REQUIRED_STAMP_FIELDS:
         assert field in stored, f"result.json environment lacks {field}"
         assert stored[field] == current[field], (
@@ -217,6 +299,8 @@ def main() -> None:
     test_b_package_mismatch()
     test_c_native_mismatch()
     test_d_subprocess_guard()
+    test_g_model_is_git_pinned()
+    test_h_dirty_model_detection()
     test_f_result_metadata()
     print("all runtime environment tests passed")
 
